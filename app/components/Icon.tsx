@@ -6,7 +6,7 @@ export type IconName =
   | 'dashboard' | 'orders' | 'shipping' | 'stock' | 'invoice'
   | 'integrations' | 'settings' | 'logout' | 'eye' | 'eye-off' | 'lock'
   | 'search' | 'alert' | 'check' | 'check-circle' | 'printer'
-  | 'edit' | 'refresh' | 'clock' | 'undo';
+  | 'edit' | 'refresh' | 'clock' | 'undo' | 'calculator';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Layout / grid dashboard
@@ -140,6 +140,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M9 14 4 9l5-5" />
       <path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+    </>
+  ),
+  calculator: (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M8 7h8" />
+      <path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h4" />
     </>
   ),
 };
