@@ -3,13 +3,16 @@
 import { useRouter, usePathname } from 'next/navigation';
 import Icon, { IconName } from './Icon';
 
-type NavItem = { icon: IconName; label: string; href: string };
+type NavItem = { icon: IconName; label: string; href: string; highlight?: boolean };
 type NavGroup = { title: string; items: NavItem[] };
 
 const navGroups: NavGroup[] = [
   {
     title: 'Genel',
-    items: [{ icon: 'dashboard', label: 'Dashboard', href: '/dashboard' }],
+    items: [
+      { icon: 'dashboard', label: 'Dashboard', href: '/dashboard' },
+      { icon: 'coins', label: 'Tasarruf Hesapla', href: '/roi', highlight: true },
+    ],
   },
   {
     title: 'Kargo',
@@ -74,8 +77,8 @@ export default function Sidebar() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '10px 12px', borderRadius: 8, marginBottom: 2,
-                    fontSize: 14, fontWeight: active ? 600 : 500,
-                    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+                    fontSize: 14, fontWeight: active ? 600 : item.highlight ? 600 : 500,
+                    color: active ? '#fff' : item.highlight ? '#34D399' : 'rgba(255,255,255,0.6)',
                     background: active ? '#1A6B46' : 'transparent',
                     borderLeft: active ? '3px solid #34D399' : '3px solid transparent',
                     textDecoration: 'none',

@@ -62,9 +62,42 @@ export default function DashboardPage() {
 
       <TopBar title="Dashboard" />
       <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
-        <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Hoş geldin, Demo Kullanıcı 👋</h1>
           <p style={{ fontSize: 13, color: '#9E9B93', marginTop: 4 }}>{today}</p>
+        </div>
+
+        {/* Hero banner */}
+        <div style={{
+          background: '#1A1915', borderRadius: 20, padding: '28px 32px', marginBottom: 28,
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
+          backgroundSize: '28px 28px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap',
+        }}>
+          <div style={{ flex: '1 1 360px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1A6B46', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12, fontWeight: 700, marginBottom: 14 }}>
+              <Icon name="zap" size={13} /> Otomasyon Aktif
+            </span>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', letterSpacing: '-0.4px', lineHeight: 1.25 }}>Bugün 284 siparişiniz otomatik yönetildi.</div>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 8, lineHeight: 1.5 }}>
+              En ucuz kargo seçildi · Barkodlar basıldı · Stoklar güncellendi · Faturalar kesildi · Müdahale: 0
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+            {[
+              { value: '2.3 sn', label: 'Ort. işlem süresi', color: '#fff' },
+              { value: '₺0', label: 'Hatalı yönl.', color: '#34D399' },
+              { value: '63 saat', label: 'Bu ay tasarruf', color: '#34D399' },
+            ].map(s => (
+              <div key={s.label} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 18px', textAlign: 'center', minWidth: 96 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.color, letterSpacing: '-0.5px' }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4, fontWeight: 500 }}>{s.label}</div>
+              </div>
+            ))}
+            <a href="/otomasyon" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#1A6B46', color: '#fff', borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
+              <Icon name="settings" size={15} /> Kuralları Yönet →
+            </a>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>

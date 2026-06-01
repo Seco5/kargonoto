@@ -7,7 +7,8 @@ export type IconName =
   | 'integrations' | 'settings' | 'logout' | 'eye' | 'eye-off' | 'lock'
   | 'search' | 'alert' | 'check' | 'check-circle' | 'printer'
   | 'edit' | 'refresh' | 'clock' | 'undo' | 'calculator'
-  | 'zap' | 'folder' | 'download' | 'mail' | 'chart' | 'bulb';
+  | 'zap' | 'folder' | 'download' | 'mail' | 'chart' | 'bulb'
+  | 'coins' | 'phone' | 'arrow-right';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Layout / grid dashboard
@@ -180,6 +181,24 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M9 18h6" />
       <path d="M10 21h4" />
       <path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.2 1 2.5h6c0-1.3.3-1.8 1-2.5A6 6 0 0 0 12 3z" />
+    </>
+  ),
+  coins: (
+    <>
+      <ellipse cx="8" cy="6" rx="5" ry="2.5" />
+      <path d="M3 6v5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V6" />
+      <path d="M3 11v5c0 1.4 2.2 2.5 5 2.5 1 0 1.9-.1 2.7-.4" />
+      <ellipse cx="16" cy="15" rx="5" ry="2.5" />
+      <path d="M11 15v3c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-3" />
+    </>
+  ),
+  phone: (
+    <path d="M5 3h3l2 5-2.5 1.5a11 11 0 0 0 5 5L18 14l5 2v3a2 2 0 0 1-2 2A18 18 0 0 1 3 5a2 2 0 0 1 2-2z" />
+  ),
+  'arrow-right': (
+    <>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
     </>
   ),
 };
