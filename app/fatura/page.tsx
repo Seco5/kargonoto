@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
+import Icon from '../components/Icon';
 
 type InvType = 'e-Fatura' | 'e-Arşiv';
 type InvStatus = 'İletildi' | 'Bekliyor' | 'Hata';
@@ -161,6 +162,290 @@ function SlidePanel({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 2 — Kargo Fatura Kontrolü
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KK_CARRIERS = [
+  { key: 'sendeo', label: 'Sendeo', anlasmali: true },
+  { key: 'aras', label: 'Aras' },
+  { key: 'yurtici', label: 'Yurtiçi' },
+  { key: 'mng', label: 'MNG' },
+];
+
+type Row = { awb: string; date: string; expected: number; billed: number; reason: string; ok: boolean };
+const KK_ROWS: Row[] = [
+  { awb: 'SNE-2024-44821', date: '03 May', expected: 53, billed: 67, reason: 'Desi farkı', ok: false },
+  { awb: 'SNE-2024-44903', date: '05 May', expected: 53, billed: 78.5, reason: 'Yakıt zammı eklendi', ok: false },
+  { awb: 'SNE-2024-45112', date: '08 May', expected: 53, billed: 67, reason: 'Desi farkı', ok: false },
+  { awb: 'SNE-2024-45388', date: '11 May', expected: 53, billed: 53, reason: '—', ok: true },
+  { awb: 'SNE-2024-45501', date: '12 May', expected: 53, billed: 89, reason: 'Ek hizmet bedeli', ok: false },
+  { awb: 'SNE-2024-45672', date: '14 May', expected: 53, billed: 67, reason: 'Desi farkı', ok: false },
+  { awb: 'SNE-2024-45890', date: '16 May', expected: 53, billed: 53, reason: '—', ok: true },
+  { awb: 'SNE-2024-46001', date: '18 May', expected: 53, billed: 71, reason: 'Adres düzeltme bedeli', ok: false },
+  { awb: 'SNE-2024-46234', date: '21 May', expected: 53, billed: 53, reason: '—', ok: true },
+  { awb: 'SNE-2024-46489', date: '24 May', expected: 53, billed: 67, reason: 'Desi farkı', ok: false },
+];
+
+const money = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function KargoKontrol() {
+  const [carrier, setCarrier] = useState('sendeo');
+  const [start, setStart] = useState('2026-05-01');
+  const [end, setEnd] = useState('2026-05-31');
+  const [file, setFile] = useState<{ name: string; size: string } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  const showToast = (msg: string) => {
+    const id = Date.now() + Math.random();
+    setToasts(t => [...t, { id, msg }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500);
+  };
+
+  const onPickFile = (f?: File | null) => {
+    if (!f) return;
+    setFile({ name: f.name || 'mayis_2026_sendeo_fatura.xlsx', size: ((f.size || 2516582) / 1048576).toFixed(1) + ' MB' });
+    setDone(false);
+  };
+
+  const handleCheck = () => {
+    if (!file) return;
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setDone(true);
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
+    }, 1500);
+  };
+
+  const cardBtn = (variant: 'outline' | 'primary'): React.CSSProperties => ({
+    width: '100%', padding: 12, borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    border: variant === 'primary' ? 'none' : '1px solid rgba(26,25,21,0.18)',
+    background: variant === 'primary' ? '#1A1915' : '#fff', color: variant === 'primary' ? '#fff' : '#1A1915',
+  });
+
+  return (
+    <>
+      <style>{`@keyframes kkspin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Açıklama banner'ı */}
+      <div style={{ display: 'flex', gap: 14, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 14, padding: '16px 20px', marginBottom: 24 }}>
+        <span style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }}><Icon name="zap" size={20} /></span>
+        <div>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#92400E' }}>Kargo faturanızda fazla ödeme var mı?</div>
+          <div style={{ fontSize: 12.5, color: '#92400E', marginTop: 4, lineHeight: 1.5, opacity: 0.9 }}>
+            Kargo firmanızın size gönderdiği faturayı yükleyin, anlaşma fiyatlarınızla otomatik karşılaştıralım. Fazla alınan ücretleri saniyeler içinde tespit edin.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* ── SOL KOLON ── */}
+        <div style={{ flex: 1, minWidth: 460, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {/* Adım 1 */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1A1915', marginBottom: 10 }}>1. Kargo Firmasını Seçin</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+              {KK_CARRIERS.map(c => {
+                const sel = carrier === c.key;
+                return (
+                  <button key={c.key} onClick={() => { setCarrier(c.key); setDone(false); }}
+                    style={{
+                      background: sel ? '#EBF5EF' : '#fff', border: '1px solid ' + (sel ? '#1A6B46' : '#E5E7EB'),
+                      borderRadius: 12, padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600,
+                      color: '#1A1915', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    }}
+                    onMouseEnter={e => { if (!sel) (e.currentTarget as HTMLElement).style.borderColor = '#1A1915'; }}
+                    onMouseLeave={e => { if (!sel) (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB'; }}
+                  >
+                    {c.label}{c.anlasmali && <Icon name="check-circle" size={13} color="#1A6B46" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Adım 2 */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1A1915', marginBottom: 10 }}>2. Fatura Dönemi</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <input type="date" value={start} onChange={e => setStart(e.target.value)} style={{ flex: 1, fontSize: 13, padding: '10px 12px', borderRadius: 10, border: '1px solid #E5E7EB', fontFamily: 'inherit', color: '#1A1915', background: '#fff' }} />
+              <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ flex: 1, fontSize: 13, padding: '10px 12px', borderRadius: 10, border: '1px solid #E5E7EB', fontFamily: 'inherit', color: '#1A1915', background: '#fff' }} />
+            </div>
+          </div>
+
+          {/* Adım 3 */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1A1915', marginBottom: 10 }}>3. Kargo Faturasını Yükleyin</div>
+            <div
+              onClick={() => fileInput.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); onPickFile(e.dataTransfer.files?.[0]); }}
+              style={{
+                background: file ? '#F0FDF4' : dragOver ? '#F0FDF4' : '#fff',
+                border: '2px dashed ' + (file || dragOver ? '#1A6B46' : '#E5E7EB'),
+                borderRadius: 18, padding: 40, textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              <input ref={fileInput} type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={e => onPickFile(e.target.files?.[0])} />
+              {file ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, color: '#1A6B46', fontWeight: 600, fontSize: 14 }}>
+                  <Icon name="check-circle" size={20} /> {file.name} · {file.size}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', color: '#9E9B93', marginBottom: 12 }}><Icon name="folder" size={42} strokeWidth={1.4} /></div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1915' }}>Excel veya CSV dosyasını buraya sürükleyin</div>
+                  <div style={{ fontSize: 12, color: '#9E9B93', margin: '8px 0' }}>veya</div>
+                  <span style={{ display: 'inline-block', padding: '8px 18px', borderRadius: 9, border: '1px solid #1A1915', color: '#1A1915', fontSize: 13, fontWeight: 600 }}>Dosya Seç</span>
+                  <div style={{ fontSize: 11.5, color: '#9E9B93', marginTop: 12 }}>.xlsx, .csv desteklenir · Maks 10MB</div>
+                </>
+              )}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <a onClick={() => showToast('Şablon indiriliyor... (Demo)')} style={{ fontSize: 12.5, color: '#1A6B46', textDecoration: 'underline', cursor: 'pointer', fontWeight: 600 }}>Örnek Şablon İndir</a>
+            </div>
+          </div>
+
+          {/* Kontrol Et */}
+          <button
+            onClick={handleCheck}
+            disabled={!file || loading}
+            style={{
+              width: '100%', padding: 16, borderRadius: 12, border: 'none', fontSize: 15, fontWeight: 700,
+              fontFamily: 'inherit', cursor: !file || loading ? 'not-allowed' : 'pointer',
+              background: !file ? 'rgba(26,25,21,0.12)' : '#1A1915', color: !file ? '#9E9B93' : '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            }}
+          >
+            {loading ? (
+              <><span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'kkspin 0.7s linear infinite' }} /> Analiz ediliyor...</>
+            ) : (
+              <><Icon name="search" size={17} /> Faturayı Kontrol Et</>
+            )}
+          </button>
+
+          {/* Sonuç tablosu */}
+          {done && (
+            <div ref={resultRef}>
+              <div style={{ fontSize: 13, color: '#5A574F', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600 }}>Mayıs 2026 · Sendeo Kargo · 847 kalem analiz edildi ·</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#C94E1A', fontWeight: 700 }}><Icon name="alert" size={14} /> 23 uyuşmazlık tespit edildi</span>
+              </div>
+
+              <div style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(26,25,21,0.08)', boxShadow: '0 1px 8px rgba(26,25,21,0.06)', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(26,25,21,0.08)', fontSize: 15, fontWeight: 700, color: '#D63B3B' }}>Tespit Edilen Uyuşmazlıklar</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(26,25,21,0.08)' }}>
+                        {['AWB No', 'Tarih', 'Beklenen', 'Faturalanan', 'Fark', 'Sebep', 'Durum'].map(h => (
+                          <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9E9B93', letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {KK_ROWS.map((r, i) => {
+                        const diff = r.billed - r.expected;
+                        const big = diff >= 14;
+                        return (
+                          <tr key={r.awb} style={{ borderBottom: i < KK_ROWS.length - 1 ? '1px solid rgba(26,25,21,0.06)' : 'none' }}>
+                            <td style={{ padding: '12px 16px', fontSize: 12.5, fontWeight: 600, color: '#1A1915', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{r.awb}</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#9E9B93', whiteSpace: 'nowrap' }}>{r.date}</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#5A574F' }}>{money(r.expected)} ₺</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#1A1915', fontWeight: 500 }}>{money(r.billed)} ₺</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: big ? 700 : 500, color: diff === 0 ? '#9E9B93' : big ? '#D63B3B' : '#5A574F', whiteSpace: 'nowrap' }}>{diff > 0 ? '+' : ''}{money(diff)} ₺</td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#5A574F' }}>{r.reason}</td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {r.ok ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#EBF5EF', color: '#1A6B46', fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}><Icon name="check-circle" size={12} /> Uyumlu</span>
+                              ) : (
+                                <button onClick={() => showToast('İtiraz kaydedildi. Sendeo ile iletişime geçilecek.')}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#FDF0EB', color: '#C94E1A', fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                  <Icon name="alert" size={12} /> İtiraz Et
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(26,25,21,0.06)' }}>
+                  <span style={{ fontSize: 12.5, color: '#9E9B93', cursor: 'pointer', textDecoration: 'underline' }}>... ve 13 uyuşmazlık daha</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── SAĞ KOLON ── */}
+        <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Özet kart */}
+          <div style={{ background: '#fff', borderRadius: 18, border: '1px solid rgba(26,25,21,0.08)', boxShadow: '0 1px 8px rgba(26,25,21,0.06)', padding: 24 }}>
+            {!done ? (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', color: '#C9C6BE', marginBottom: 12 }}><Icon name="chart" size={34} strokeWidth={1.5} /></div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1915', marginBottom: 6 }}>Faturanızı yükleyip kontrol ettirin</div>
+                <div style={{ fontSize: 12.5, color: '#9E9B93', lineHeight: 1.5 }}>Analiz sonucu burada özetlenecek.</div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 700, color: '#1A1915' }}><Icon name="chart" size={18} color="#1A6B46" /> Analiz Özeti</div>
+                <div style={{ fontSize: 12.5, color: '#9E9B93', marginTop: 3 }}>Mayıs 2026 · Sendeo</div>
+                <div style={{ borderTop: '1px solid #F0EFEB', margin: '14px 0', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#5A574F' }}>Toplam Kalem:</span><b style={{ color: '#1A1915' }}>847</b></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#5A574F' }}>Uyumlu:</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#1A6B46', fontWeight: 700 }}>824 <Icon name="check-circle" size={13} /></span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#5A574F' }}>Uyuşmazlık:</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#C94E1A', fontWeight: 700 }}>23 <Icon name="alert" size={13} /></span></div>
+                </div>
+                <div style={{ fontSize: 12, color: '#9E9B93' }}>Beklenen Toplam:</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1915', marginBottom: 8 }}>₺44.891,00</div>
+                <div style={{ fontSize: 12, color: '#9E9B93' }}>Faturalanan Toplam:</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1915' }}>₺46.233,50</div>
+                <div style={{ borderTop: '1px solid #F0EFEB', margin: '14px 0 0', paddingTop: 14 }}>
+                  <div style={{ fontSize: 12, color: '#9E9B93' }}>Fazla Ödeme:</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 24, fontWeight: 800, color: '#D63B3B', marginTop: 2 }}>
+                    ₺1.342,50 <span style={{ width: 9, height: 9, borderRadius: 999, background: '#D63B3B', display: 'inline-block' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+                  <button onClick={() => showToast('Rapor hazırlanıyor... (Demo)')} style={cardBtn('outline')}><Icon name="download" size={15} /> Raporu İndir</button>
+                  <button onClick={() => showToast('23 itiraz Sendeo’ya iletildi. Yanıt 3-5 iş günü içinde gelecek.')} style={cardBtn('primary')}><Icon name="mail" size={15} /> Sendeo&apos;ya İtiraz Gönder</button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* CTA kart */}
+          <div style={{ background: '#EBF5EF', border: '1px solid rgba(26,107,70,0.2)', borderRadius: 18, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#1A6B46', marginBottom: 8 }}><Icon name="bulb" size={15} /> Pro İpucu</div>
+            <div style={{ fontSize: 12.5, color: '#1A6B46', lineHeight: 1.5, marginBottom: 14, opacity: 0.92 }}>
+              Pro plan ile tüm kargo firmalarınızın faturalarını otomatik ve anlık kontrol edin. Manuel yüklemeye gerek kalmaz.
+            </div>
+            <button onClick={() => alert('Satış ekibimiz sizi arayacak! 🎉')} style={{ background: '#1A6B46', color: '#fff', border: 'none', borderRadius: 999, padding: '10px 18px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Pro&apos;ya Geç →</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Toasts */}
+      <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 100 }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{ background: '#EBF5EF', color: '#1A6B46', border: '1px solid rgba(26,107,70,0.25)', borderRadius: 10, padding: '12px 18px', fontSize: 13, fontWeight: 600, boxShadow: '0 6px 24px rgba(0,0,0,0.12)', maxWidth: 340 }}>{t.msg}</div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default function FaturaPage() {
   const [search, setSearch] = useState('');
   const [platform, setPlatform] = useState<'Tümü' | Platform>('Tümü');
@@ -168,6 +453,7 @@ export default function FaturaPage() {
   const [status, setStatus] = useState<'Tümü' | InvStatus>('Tümü');
   const [period, setPeriod] = useState('Bu Ay');
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [tab, setTab] = useState<'kesilen' | 'kontrol'>('kesilen');
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr');
@@ -192,11 +478,40 @@ export default function FaturaPage() {
 
       <TopBar title="Fatura" />
       <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
-        <div style={{ marginBottom: 22 }}>
+        <div style={{ marginBottom: 18 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Fatura</h1>
           <p style={{ fontSize: 13, color: '#9E9B93', marginTop: 4 }}>e-Fatura ve e-Arşiv yönetimi</p>
         </div>
 
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 24, borderBottom: '1px solid #E5E7EB', marginBottom: 24 }}>
+          {([
+            { key: 'kesilen' as const, icon: 'invoice' as const, label: 'Kesilen Faturalar' },
+            { key: 'kontrol' as const, icon: 'search' as const, label: 'Kargo Fatura Kontrolü' },
+          ]).map(t => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, padding: '0 0 12px', background: 'none', cursor: 'pointer',
+                  border: 'none', borderBottom: '2px solid ' + (active ? '#1A1915' : 'transparent'),
+                  fontFamily: 'inherit', fontSize: 14, fontWeight: active ? 700 : 600,
+                  color: active ? '#1A1915' : '#9E9B93', transition: 'all 0.15s', marginBottom: -1,
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#1A1915'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#9E9B93'; }}
+              >
+                <Icon name={t.icon} size={16} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === 'kontrol' && <KargoKontrol />}
+
+        {tab === 'kesilen' && <>
         {/* Entegrasyon banner */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EBF5EF', border: '1px solid rgba(26,107,70,0.2)', borderRadius: 12, padding: '12px 20px', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -307,6 +622,7 @@ export default function FaturaPage() {
             </table>
           </div>
         </div>
+        </>}
       </main>
 
       {selected && <SlidePanel inv={selected} onClose={() => setSelected(null)} />}

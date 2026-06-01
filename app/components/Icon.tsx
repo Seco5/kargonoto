@@ -6,7 +6,8 @@ export type IconName =
   | 'dashboard' | 'orders' | 'shipping' | 'stock' | 'invoice'
   | 'integrations' | 'settings' | 'logout' | 'eye' | 'eye-off' | 'lock'
   | 'search' | 'alert' | 'check' | 'check-circle' | 'printer'
-  | 'edit' | 'refresh' | 'clock' | 'undo' | 'calculator';
+  | 'edit' | 'refresh' | 'clock' | 'undo' | 'calculator'
+  | 'zap' | 'folder' | 'download' | 'mail' | 'chart' | 'bulb';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Layout / grid dashboard
@@ -147,6 +148,38 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="5" y="3" width="14" height="18" rx="2" />
       <path d="M8 7h8" />
       <path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h4" />
+    </>
+  ),
+  zap: <path d="M13 2 4 14h7l-1 8 9-12h-7z" />,
+  folder: (
+    <>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 3v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M5 21h14" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M3 3v18h18" />
+      <path d="M7 14v3M12 9v8M17 5v12" />
+    </>
+  ),
+  bulb: (
+    <>
+      <path d="M9 18h6" />
+      <path d="M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.2 1 2.5h6c0-1.3.3-1.8 1-2.5A6 6 0 0 0 12 3z" />
     </>
   ),
 };
