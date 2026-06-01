@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import TopBar from '../components/TopBar';
 
 type InvType = 'e-Fatura' | 'e-Arşiv';
 type InvStatus = 'İletildi' | 'Bekliyor' | 'Hata';
@@ -189,7 +190,8 @@ export default function FaturaPage() {
       <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes pulse { 0%,100% { opacity:1; transform:scale(1);} 50% { opacity:0.4; transform:scale(0.7);} }`}</style>
       <Sidebar />
 
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px 36px' }}>
+      <TopBar title="Fatura" />
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
         <div style={{ marginBottom: 22 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Fatura</h1>
           <p style={{ fontSize: 13, color: '#9E9B93', marginTop: 4 }}>e-Fatura ve e-Arşiv yönetimi</p>

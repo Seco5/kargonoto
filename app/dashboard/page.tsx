@@ -1,6 +1,7 @@
 'use client';
 
 import Sidebar from '../components/Sidebar';
+import TopBar from '../components/TopBar';
 import Icon, { IconName } from '../components/Icon';
 
 const METRIC_ICONS: Record<string, IconName> = {
@@ -59,7 +60,8 @@ export default function DashboardPage() {
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#F7F6F2' }}>
       <Sidebar />
 
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px 36px' }}>
+      <TopBar title="Dashboard" />
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
         <div style={{ marginBottom: 28 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Hoş geldin, Demo Kullanıcı 👋</h1>
           <p style={{ fontSize: 13, color: '#9E9B93', marginTop: 4 }}>{today}</p>
@@ -67,10 +69,10 @@ export default function DashboardPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>
           {[
-            { label: 'Toplam Gönderi', value: '1.284', color: '#1A1915', badge: 'rgba(26,25,21,0.08)' },
-            { label: 'Bekleyen', value: '47', color: '#D97706', badge: '#FEF3C7' },
-            { label: 'Teslim Edilen', value: '1.198', color: '#065F46', badge: '#D1FAE5' },
-            { label: 'İade', value: '39', color: '#DC2626', badge: '#FEE2E2' },
+            { label: 'Toplam Gönderi', value: '1.284', color: '#1A1915', badge: 'rgba(26,25,21,0.08)', trend: { arrow: '↑', text: '%12 geçen haftaya göre', color: '#1A6B46' } },
+            { label: 'Bekleyen', value: '47', color: '#D97706', badge: '#FEF3C7', trend: { arrow: '↑', text: '%3 artış', color: '#D63B3B' } },
+            { label: 'Teslim Edilen', value: '1.198', color: '#065F46', badge: '#D1FAE5', trend: { arrow: '↑', text: '%8 geçen haftaya göre', color: '#1A6B46' } },
+            { label: 'İade', value: '39', color: '#DC2626', badge: '#FEE2E2', trend: { arrow: '↓', text: '%5 azaldı', color: '#1A6B46' } },
           ].map(m => (
             <div key={m.label} style={{ background: '#fff', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 8px rgba(26,25,21,0.06)', border: '1px solid rgba(26,25,21,0.08)' }}>
               <div style={{ width: 40, height: 40, borderRadius: 11, background: m.badge, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -78,6 +80,9 @@ export default function DashboardPage() {
               </div>
               <div style={{ fontSize: 26, fontWeight: 800, color: m.color, letterSpacing: '-1px' }}>{m.value}</div>
               <div style={{ fontSize: 13, color: '#9E9B93', marginTop: 4, fontWeight: 500 }}>{m.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: m.trend.color, marginTop: 8 }}>
+                {m.trend.arrow} {m.trend.text}
+              </div>
             </div>
           ))}
         </div>
@@ -97,7 +102,12 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {orders.map((o, i) => (
-                  <tr key={o.id} style={{ borderBottom: i < orders.length - 1 ? '1px solid rgba(26,25,21,0.06)' : 'none' }}>
+                  <tr
+                    key={o.id}
+                    style={{ borderBottom: i < orders.length - 1 ? '1px solid rgba(26,25,21,0.06)' : 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#EFEDE8'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  >
                     <td style={{ padding: '14px 20px', fontSize: 13, fontWeight: 600, color: '#1A1915', fontFamily: 'monospace' }}>{o.id}</td>
                     <td style={{ padding: '14px 20px', fontSize: 13, color: '#1A1915' }}>{o.customer}</td>
                     <td style={{ padding: '14px 20px' }}>{platformBadge(o.platform)}</td>

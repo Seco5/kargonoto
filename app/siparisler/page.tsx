@@ -2,6 +2,7 @@
 
 import { useState, useMemo, JSX, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
+import TopBar from '../components/TopBar';
 import Icon from '../components/Icon';
 
 // small helper for inline icon + label inside buttons/labels
@@ -391,7 +392,8 @@ export default function SiparislerPage() {
       <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes fadeSlideIn { from { opacity:0;transform:translateY(-6px) } to { opacity:1;transform:translateY(0) } }`}</style>
       <Sidebar />
 
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px 36px' }}>
+      <TopBar title="Siparişler" />
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
 
         {/* ── Header row ────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>

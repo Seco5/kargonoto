@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import TopBar from '../components/TopBar';
 import Icon from '../components/Icon';
 
 type Field = { key: string; label: string; type: 'text' | 'password' };
@@ -177,7 +178,8 @@ export default function EntegrasyonlarPage() {
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#F7F6F2' }}>
       <Sidebar />
 
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px 36px', maxWidth: 1180 }}>
+      <TopBar title="Entegrasyonlar" />
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px', maxWidth: 1180 }}>
         <div style={{ marginBottom: 26 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Entegrasyon Ayarları</h1>
           <p style={{ fontSize: 13.5, color: '#9E9B93', marginTop: 5, maxWidth: 560, lineHeight: 1.5 }}>Kargo firmaları, pazaryerleri ve fatura entegratörlerinizi buradan bağlayın.</p>

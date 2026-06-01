@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import TopBar from '../components/TopBar';
 import Icon from '../components/Icon';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -263,7 +264,8 @@ export default function StokPage() {
 
       <Sidebar />
 
-      <main style={{ marginLeft: 240, flex: 1, padding: '32px 36px' }}>
+      <TopBar title="Stok" />
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
 
         {/* ── Page title ─────────────────────────────────────────────────── */}
         <div style={{ marginBottom: 24 }}>
