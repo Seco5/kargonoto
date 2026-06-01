@@ -38,6 +38,7 @@ const INITIAL: Rule[] = [
 export default function OtomasyonPage() {
   const [rules, setRules] = useState<Rule[]>(INITIAL);
   const [editing, setEditing] = useState<Rule | null>(null);
+  const [fallback, setFallback] = useState('Sendeo');
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
 
   const showToast = (msg: string) => {
@@ -164,9 +165,25 @@ export default function OtomasyonPage() {
           ))}
         </div>
 
-        {/* Fallback note */}
-        <div style={{ marginTop: 16, padding: '12px 18px', background: '#EBF5EF', border: '1px dashed rgba(26,107,70,0.3)', borderRadius: 12, fontSize: 12.5, color: '#1A6B46', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Icon name="bulb" size={15} /> Hiçbir kurala uymayan siparişler varsayılan olarak <b style={{ margin: '0 3px' }}>Sendeo</b> ile gönderilir.
+        {/* Fallback rule — configurable */}
+        <div style={{ marginTop: 16, padding: '16px 18px', background: '#EBF5EF', border: '1px dashed rgba(26,107,70,0.4)', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(26,107,70,0.12)', color: '#1A6B46', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="bulb" size={17} />
+          </span>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1A6B46' }}>Varsayılan Kural</div>
+            <div style={{ fontSize: 12, color: '#1A6B46', opacity: 0.8, marginTop: 2 }}>Yukarıdaki hiçbir kurala uymayan siparişler bu firma ile gönderilir.</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="arrow-right" size={16} color="#1A6B46" strokeWidth={2} />
+            <select
+              value={fallback}
+              onChange={e => { setFallback(e.target.value); showToast('Varsayılan firma güncellendi ✓'); }}
+              style={{ fontSize: 13, fontWeight: 700, padding: '9px 12px', borderRadius: 9, border: '1px solid rgba(26,107,70,0.4)', background: '#fff', color: carrierColor(fallback), fontFamily: 'inherit', cursor: 'pointer' }}
+            >
+              {CARRIERS.map(c => <option key={c.name} style={{ color: '#1A1915' }}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
       </main>
 
