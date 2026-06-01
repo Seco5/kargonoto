@@ -20,6 +20,7 @@ const navGroups: NavGroup[] = [
       { icon: 'orders', label: 'Siparişler', href: '/siparisler' },
       { icon: 'shipping', label: 'Kargo Gönder', href: '/gonder' },
       { icon: 'refresh', label: 'Kargo Takip', href: '/takip' },
+      { icon: 'undo', label: 'İade Yönetimi', href: '/iade' },
       { icon: 'zap', label: 'Otomasyon Kuralları', href: '/otomasyon' },
     ],
   },

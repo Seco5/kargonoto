@@ -9,7 +9,8 @@ export type IconName =
   | 'edit' | 'refresh' | 'clock' | 'undo' | 'calculator'
   | 'zap' | 'folder' | 'download' | 'mail' | 'chart' | 'bulb'
   | 'coins' | 'phone' | 'arrow-right'
-  | 'plus' | 'trash' | 'grip' | 'x' | 'power';
+  | 'plus' | 'trash' | 'grip' | 'x' | 'power'
+  | 'camera' | 'card' | 'gift' | 'store' | 'home';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Layout / grid dashboard
@@ -226,6 +227,38 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M12 3v9" />
       <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+    </>
+  ),
+  camera: (
+    <>
+      <path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <circle cx="12" cy="12.5" r="3.2" />
+    </>
+  ),
+  card: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18" />
+    </>
+  ),
+  gift: (
+    <>
+      <path d="M20 12v9H4v-9" />
+      <path d="M2 7h20v5H2z" />
+      <path d="M12 21V7" />
+      <path d="M12 7S10.5 3 8 4.5 9 7 12 7zM12 7s1.5-4 4-2.5S15 7 12 7z" />
+    </>
+  ),
+  store: (
+    <>
+      <path d="M4 9h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+      <path d="M3 9 5 4h14l2 5a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5 10v10h14V10" />
     </>
   ),
 };
