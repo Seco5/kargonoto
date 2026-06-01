@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import Icon from '../components/Icon';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type StockStatus = 'Aktif' | 'Az Stok' | 'Tükendi';
@@ -272,14 +273,16 @@ export default function StokPage() {
 
         {/* ── Metric cards ───────────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
-          {[
-            { label: 'Toplam SKU',       value: totalSKU,          icon: '🗂️', color: '#1A1915' },
-            { label: 'Kritik Stok',      value: kritik,            icon: '⚠️', color: '#C94E1A' },
-            { label: 'Tükendi',          value: tukendi,           icon: '🚫', color: '#D63B3B' },
-            { label: 'Bugün Güncellendi',value: bugunGuncellendi,  icon: '✅', color: '#1A6B46' },
-          ].map(m => (
+          {([
+            { label: 'Toplam SKU',       value: totalSKU,          icon: 'stock' as const,        color: '#1A1915', badge: 'rgba(26,25,21,0.08)' },
+            { label: 'Kritik Stok',      value: kritik,            icon: 'alert' as const,        color: '#C94E1A', badge: '#FDF0EB' },
+            { label: 'Tükendi',          value: tukendi,           icon: 'alert' as const,        color: '#D63B3B', badge: '#FBEAEA' },
+            { label: 'Bugün Güncellendi',value: bugunGuncellendi,  icon: 'check-circle' as const, color: '#1A6B46', badge: '#EBF5EF' },
+          ]).map(m => (
             <div key={m.label} style={{ background: '#fff', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 8px rgba(26,25,21,0.06)', border: '1px solid rgba(26,25,21,0.08)' }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>{m.icon}</div>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: m.badge, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Icon name={m.icon} size={20} color={m.color} strokeWidth={1.9} />
+              </div>
               <div style={{ fontSize: 28, fontWeight: 800, color: m.color, letterSpacing: '-1px' }}>{m.value}</div>
               <div style={{ fontSize: 13, color: '#9E9B93', marginTop: 4, fontWeight: 500 }}>{m.label}</div>
             </div>
@@ -290,7 +293,7 @@ export default function StokPage() {
         <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Search */}
           <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 320 }}>
-            <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9E9B93' }}>🔍</span>
+            <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: '#9E9B93' }}><Icon name="search" size={15} strokeWidth={1.8} /></span>
             <input
               type="text"
               placeholder="Ürün adı veya SKU ara..."
@@ -413,10 +416,10 @@ export default function StokPage() {
         </div>
 
         {/* ── Footer summary ─────────────────────────────────────────────── */}
-        <div style={{ marginTop: 12, padding: '10px 16px', display: 'flex', gap: 20, fontSize: 12, color: '#9E9B93' }}>
-          <span>✅ Aktif: <b style={{ color: '#1A6B46' }}>{stock.filter(i => i.status === 'Aktif').length}</b></span>
-          <span>⚠️ Az Stok: <b style={{ color: '#C94E1A' }}>{stock.filter(i => i.status === 'Az Stok').length}</b></span>
-          <span>🚫 Tükendi: <b style={{ color: '#D63B3B' }}>{stock.filter(i => i.status === 'Tükendi').length}</b></span>
+        <div style={{ marginTop: 12, padding: '10px 16px', display: 'flex', gap: 20, fontSize: 12, color: '#9E9B93', alignItems: 'center' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="check-circle" size={14} color="#1A6B46" /> Aktif: <b style={{ color: '#1A6B46' }}>{stock.filter(i => i.status === 'Aktif').length}</b></span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={14} color="#C94E1A" /> Az Stok: <b style={{ color: '#C94E1A' }}>{stock.filter(i => i.status === 'Az Stok').length}</b></span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={14} color="#D63B3B" /> Tükendi: <b style={{ color: '#D63B3B' }}>{stock.filter(i => i.status === 'Tükendi').length}</b></span>
           <span style={{ marginLeft: 'auto' }}>Toplam stok: <b style={{ color: '#1A1915' }}>{stock.reduce((s, i) => s + i.trendyol + i.hepsiburada + i.n11, 0)} adet</b></span>
         </div>
       </main>

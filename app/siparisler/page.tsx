@@ -2,6 +2,16 @@
 
 import { useState, useMemo, JSX, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
+import Icon from '../components/Icon';
+
+// small helper for inline icon + label inside buttons/labels
+function IconText({ name, color, children, gap = 6, size = 15 }: { name: import('../components/Icon').IconName; color?: string; children: React.ReactNode; gap?: number; size?: number }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap }}>
+      <Icon name={name} size={size} color={color} strokeWidth={1.8} />{children}
+    </span>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Status   = 'Bekliyor' | 'Kargoda' | 'Teslim Edildi' | 'İade';
@@ -162,7 +172,7 @@ function PrintModal({ orders, onClose, onConfirm }: { orders: Order[]; onClose: 
         <div style={{ background: '#F7F6F2', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13 }}>
           <span style={{ fontWeight: 600, color: '#1A1915' }}>{orders.length} sipariş</span>
           <span style={{ color: '#9E9B93' }}> · {totalPkgs} barkod yazdırılacak</span>
-          {orders.some(o => o.printed) && <div style={{ marginTop: 6, color: '#D97706', fontWeight: 600, fontSize: 12 }}>⚠️ {orders.filter(o => o.printed).length} sipariş daha önce yazdırıldı — tekrar yazdırılacak</div>}
+          {orders.some(o => o.printed) && <div style={{ marginTop: 6, color: '#D97706', fontWeight: 600, fontSize: 12 }}><IconText name="alert" color="#D97706" size={13}>{orders.filter(o => o.printed).length} sipariş daha önce yazdırıldı — tekrar yazdırılacak</IconText></div>}
         </div>
         {orders.map(order => (
           <div key={order.id} style={{ marginBottom: 16, padding: 16, border: '1px solid rgba(26,25,21,0.1)', borderRadius: 12 }}>
@@ -181,7 +191,7 @@ function PrintModal({ orders, onClose, onConfirm }: { orders: Order[]; onClose: 
         ))}
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid rgba(26,25,21,0.16)', background: '#F7F6F2', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#5A574F' }}>İptal</button>
-          <button onClick={onConfirm} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🖨 Yazdır ({totalPkgs} barkod)</button>
+          <button onClick={onConfirm} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}><Icon name="printer" size={16} /> Yazdır ({totalPkgs} barkod)</button>
         </div>
       </div>
     </div>
@@ -208,7 +218,7 @@ function AliasCell({ productId, name, aliases, onSave }: { productId: string; na
       <span style={{ fontSize: 13, color: '#1A1915', fontWeight: 500 }}>{alias || name}</span>
       {alias && <span style={{ fontSize: 11, color: '#9E9B93', fontStyle: 'italic' }}>(orijinal: {name.length > 20 ? name.slice(0,20)+'…' : name})</span>}
       <button onClick={() => { setVal(aliases[productId] || ''); setEditing(true); }} title="Kısa ad tanımla"
-        style={{ fontSize: 11, padding: '2px 7px', borderRadius: 5, background: 'transparent', border: '1px solid rgba(26,25,21,0.12)', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4 }}>✏️</button>
+        style={{ padding: '3px 7px', borderRadius: 5, background: 'transparent', border: '1px solid rgba(26,25,21,0.12)', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="edit" size={13} /></button>
     </div>
   );
 }
@@ -238,7 +248,7 @@ function PlatformCard({ cfg, onToggle, onSync }: { cfg: PlatformConfig; onToggle
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontSize: 18 }}>{cfg.icon}</span>
+          <span style={{ width: 26, height: 26, borderRadius: 7, background: cfg.enabled ? cfg.color : '#D4D2CC', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, letterSpacing: '-0.3px' }}>{cfg.abbr}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: cfg.enabled ? cfg.color : '#9E9B93' }}>{cfg.label}</span>
         </div>
         {/* Toggle switch */}
@@ -259,7 +269,7 @@ function PlatformCard({ cfg, onToggle, onSync }: { cfg: PlatformConfig; onToggle
             <span>{success && cfg.newCount > 0 ? <span style={{ color: '#1A6B46', fontWeight: 600 }}>+{cfg.newCount} yeni · </span> : null}{cfg.lastSync}</span>
           )}
           {cfg.enabled && loading && <span style={{ color: cfg.color, fontWeight: 600 }}>Çekiliyor…</span>}
-          {cfg.enabled && error && <span style={{ color: '#DC2626', fontWeight: 600 }}>Hata ↩ tekrar dene</span>}
+          {cfg.enabled && error && <span style={{ color: '#DC2626', fontWeight: 600 }}>Hata · tekrar dene</span>}
         </div>
         {cfg.enabled && (
           <button
@@ -267,7 +277,7 @@ function PlatformCard({ cfg, onToggle, onSync }: { cfg: PlatformConfig; onToggle
             disabled={loading}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: loading ? 'rgba(26,25,21,0.1)' : cfg.color, color: loading ? '#9E9B93' : '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
           >
-            {loading ? <><Spinner /> Çekiyor</> : error ? '↩ Tekrar' : '↻ Çek'}
+            {loading ? <><Spinner /> Çekiyor</> : <><Icon name={error ? 'undo' : 'refresh'} size={13} /> {error ? 'Tekrar' : 'Çek'}</>}
           </button>
         )}
       </div>
@@ -316,13 +326,13 @@ export default function SiparislerPage() {
           ? { ...p, syncState: 'success', lastSync: timeStr, newCount: newOrders.length }
           : p
         ));
-        showToast(`✅ ${platform}: ${newOrders.length} yeni sipariş`);
+        showToast(`${platform}: ${newOrders.length} yeni sipariş`);
         // Clear "isNew" highlight after 8s
         setTimeout(() => setOrders(prev => prev.map(o => ({ ...o, isNew: false }))), 8000);
       })
       .catch(() => {
         setPlatforms(prev => prev.map(p => p.key === platform ? { ...p, syncState: 'error' } : p));
-        showToast(`❌ ${platform} API hatası — tekrar dene`, 'err');
+        showToast(`${platform} API hatası — tekrar dene`, 'err');
       });
   }, [showToast]);
 
@@ -362,7 +372,7 @@ export default function SiparislerPage() {
     const ts = new Date().toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     setOrders(prev => prev.map(o => ids.has(o.id) ? { ...o, printed: true, printedAt: ts } : o));
     const total = selectedOrders.reduce((s, o) => s + o.packages, 0);
-    showToast(`✅ ${total} barkod yazdırıldı`);
+    showToast(`${total} barkod yazdırıldı`);
     setSelectedIds(new Set());
     setShowPrint(false);
   }
@@ -398,14 +408,14 @@ export default function SiparislerPage() {
               onClick={() => setSyncPanel(v => !v)}
               style={{ padding: '9px 14px', borderRadius: 9, border: '1.5px solid rgba(26,25,21,0.16)', background: syncPanelOpen ? '#1A1915' : '#fff', color: syncPanelOpen ? '#fff' : '#1A1915', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              🔌 Platformlar {enabledCount > 0 && <span style={{ background: syncPanelOpen ? 'rgba(255,255,255,0.2)' : '#1A6B46', color: '#fff', borderRadius: 999, fontSize: 11, padding: '1px 7px', fontWeight: 700 }}>{enabledCount}</span>}
+              <Icon name="integrations" size={15} /> Platformlar {enabledCount > 0 && <span style={{ background: syncPanelOpen ? 'rgba(255,255,255,0.2)' : '#1A6B46', color: '#fff', borderRadius: 999, fontSize: 11, padding: '1px 7px', fontWeight: 700 }}>{enabledCount}</span>}
             </button>
             <button
               onClick={syncAll}
               disabled={enabledCount === 0 || anyLoading}
               style={{ padding: '9px 18px', borderRadius: 9, border: 'none', background: enabledCount === 0 || anyLoading ? 'rgba(26,25,21,0.12)' : '#1A6B46', color: enabledCount === 0 || anyLoading ? '#9E9B93' : '#fff', fontSize: 13, fontWeight: 700, cursor: enabledCount === 0 || anyLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7 }}
             >
-              {anyLoading ? <><Spinner /> Güncelleniyor…</> : '↻ Tümünü Güncelle'}
+              {anyLoading ? <><Spinner /> Güncelleniyor…</> : <><Icon name="refresh" size={15} /> Tümünü Güncelle</>}
             </button>
           </div>
         </div>
@@ -423,7 +433,7 @@ export default function SiparislerPage() {
                 disabled={enabledCount === 0 || anyLoading}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: enabledCount === 0 || anyLoading ? 'rgba(26,25,21,0.1)' : '#1A1915', color: enabledCount === 0 || anyLoading ? '#9E9B93' : '#fff', fontSize: 13, fontWeight: 700, cursor: enabledCount === 0 || anyLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
               >
-                {anyLoading ? <><Spinner /> Güncelleniyor</> : `↻ ${enabledCount} Platformu Güncelle`}
+                {anyLoading ? <><Spinner /> Güncelleniyor</> : <><Icon name="refresh" size={15} /> {enabledCount} Platformu Güncelle</>}
               </button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
@@ -495,7 +505,7 @@ export default function SiparislerPage() {
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>· {selectedOrders.reduce((s, o) => s + o.packages, 0)} barkod</span>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               <button onClick={() => setSelectedIds(new Set())} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Seçimi Kaldır</button>
-              <button onClick={() => setShowPrint(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1A6B46', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🖨 Barkod Yazdır</button>
+              <button onClick={() => setShowPrint(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1A6B46', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="printer" size={15} /> Barkod Yazdır</button>
             </div>
           </div>
         )}
@@ -560,13 +570,13 @@ export default function SiparislerPage() {
                   <div style={{ display: 'flex', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                     {order.printed ? (
                       <>
-                        <span title={`Yazdırıldı: ${order.printedAt}`} style={{ fontSize: 15 }}>✅</span>
+                        <span title={`Yazdırıldı: ${order.printedAt}`} style={{ display: 'inline-flex', color: '#1A6B46' }}><Icon name="check-circle" size={17} /></span>
                         <button onClick={() => { setSelectedIds(new Set([order.id])); setShowPrint(true); }} title="Tekrar yazdır"
-                          style={{ fontSize: 12, padding: '3px 7px', borderRadius: 6, border: '1px solid rgba(26,25,21,0.14)', background: '#F7F6F2', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit' }}>↩</button>
+                          style={{ padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(26,25,21,0.14)', background: '#F7F6F2', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="undo" size={13} /></button>
                       </>
                     ) : (
-                      <button onClick={() => { setSelectedIds(new Set([order.id])); setShowPrint(true); }}
-                        style={{ fontSize: 12, padding: '4px 9px', borderRadius: 6, border: 'none', background: '#1A1915', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>🖨</button>
+                      <button onClick={() => { setSelectedIds(new Set([order.id])); setShowPrint(true); }} title="Barkod yazdır"
+                        style={{ padding: '5px 9px', borderRadius: 6, border: 'none', background: '#1A1915', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="printer" size={14} /></button>
                     )}
                     <button onClick={() => toggleExpand(order.id)}
                       style={{ fontSize: 14, padding: '3px 6px', borderRadius: 6, border: '1px solid rgba(26,25,21,0.12)', background: 'transparent', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</button>
@@ -576,7 +586,7 @@ export default function SiparislerPage() {
                 {expanded && (
                   <div style={{ padding: '0 16px 16px 56px', borderTop: '1px dashed rgba(26,25,21,0.08)', background: 'rgba(26,107,70,0.02)' }}>
                     <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {order.printed && <div style={{ fontSize: 12, color: '#D97706', fontWeight: 600, marginBottom: 2 }}>⚠️ Barkod daha önce yazdırıldı — {order.printedAt}</div>}
+                      {order.printed && <div style={{ fontSize: 12, color: '#D97706', fontWeight: 600, marginBottom: 2 }}><IconText name="alert" color="#D97706" size={13}>Barkod daha önce yazdırıldı — {order.printedAt}</IconText></div>}
                       {order.products.map(prod => (
                         <div key={prod.id + order.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', borderRadius: 10, border: '1px solid rgba(26,25,21,0.08)' }}>
                           <img src={prod.image} alt={prod.name} width={48} height={48}
@@ -593,7 +603,7 @@ export default function SiparislerPage() {
                       ))}
                       {order.packages > 1 && (
                         <div style={{ padding: '8px 14px', background: '#EBF0F9', borderRadius: 8, fontSize: 12, color: '#1A4B8C', fontWeight: 600 }}>
-                          📦 Bu sipariş {order.packages} ayrı pakete bölünmüş — {order.packages} barkod yazdırılacak
+                          <IconText name="stock" color="#1A4B8C" size={14}>Bu sipariş {order.packages} ayrı pakete bölünmüş — {order.packages} barkod yazdırılacak</IconText>
                         </div>
                       )}
                     </div>
@@ -606,10 +616,10 @@ export default function SiparislerPage() {
 
         {/* ── Footer summary ─────────────────────────────────────────────── */}
         {filtered.length > 0 && (
-          <div style={{ marginTop: 12, padding: '10px 16px', display: 'flex', gap: 20, fontSize: 12, color: '#9E9B93' }}>
-            <span>🖨 Yazdırıldı: <b style={{ color: '#1A1915' }}>{filtered.filter(o => o.printed).length}</b></span>
-            <span>⏳ Bekleyen: <b style={{ color: '#D97706' }}>{filtered.filter(o => !o.printed).length}</b></span>
-            <span>📦 Toplam paket: <b style={{ color: '#1A1915' }}>{filtered.reduce((s, o) => s + o.packages, 0)}</b></span>
+          <div style={{ marginTop: 12, padding: '10px 16px', display: 'flex', gap: 20, fontSize: 12, color: '#9E9B93', alignItems: 'center' }}>
+            <IconText name="printer" color="#9E9B93" size={14}>Yazdırıldı: <b style={{ color: '#1A1915', marginLeft: 2 }}>{filtered.filter(o => o.printed).length}</b></IconText>
+            <IconText name="clock" color="#D97706" size={14}>Bekleyen: <b style={{ color: '#D97706', marginLeft: 2 }}>{filtered.filter(o => !o.printed).length}</b></IconText>
+            <IconText name="stock" color="#9E9B93" size={14}>Toplam paket: <b style={{ color: '#1A1915', marginLeft: 2 }}>{filtered.reduce((s, o) => s + o.packages, 0)}</b></IconText>
           </div>
         )}
       </main>

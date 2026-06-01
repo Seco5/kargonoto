@@ -1,6 +1,14 @@
 'use client';
 
 import Sidebar from '../components/Sidebar';
+import Icon, { IconName } from '../components/Icon';
+
+const METRIC_ICONS: Record<string, IconName> = {
+  'Toplam Gönderi': 'stock',
+  'Bekleyen': 'orders',
+  'Teslim Edilen': 'shipping',
+  'İade': 'invoice',
+};
 
 const orders = [
   { id: '#TY-8842901', customer: 'Ayşe Kaya', platform: 'Trendyol', carrier: 'Sendeo', status: 'Kargoda', date: '01 Haz' },
@@ -59,13 +67,15 @@ export default function DashboardPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>
           {[
-            { label: 'Toplam Gönderi', value: '1.284', icon: '📦', color: '#1A1915' },
-            { label: 'Bekleyen', value: '47', icon: '⏳', color: '#D97706' },
-            { label: 'Teslim Edilen', value: '1.198', icon: '✅', color: '#065F46' },
-            { label: 'İade', value: '39', icon: '↩️', color: '#DC2626' },
+            { label: 'Toplam Gönderi', value: '1.284', color: '#1A1915', badge: 'rgba(26,25,21,0.08)' },
+            { label: 'Bekleyen', value: '47', color: '#D97706', badge: '#FEF3C7' },
+            { label: 'Teslim Edilen', value: '1.198', color: '#065F46', badge: '#D1FAE5' },
+            { label: 'İade', value: '39', color: '#DC2626', badge: '#FEE2E2' },
           ].map(m => (
             <div key={m.label} style={{ background: '#fff', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 8px rgba(26,25,21,0.06)', border: '1px solid rgba(26,25,21,0.08)' }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>{m.icon}</div>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: m.badge, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Icon name={METRIC_ICONS[m.label]} size={20} color={m.color} strokeWidth={1.9} />
+              </div>
               <div style={{ fontSize: 26, fontWeight: 800, color: m.color, letterSpacing: '-1px' }}>{m.value}</div>
               <div style={{ fontSize: 13, color: '#9E9B93', marginTop: 4, fontWeight: 500 }}>{m.label}</div>
             </div>

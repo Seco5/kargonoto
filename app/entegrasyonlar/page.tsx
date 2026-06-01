@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Sidebar from '../components/Sidebar';
+import Icon from '../components/Icon';
 
 type Field = { key: string; label: string; type: 'text' | 'password' };
 
@@ -76,8 +77,8 @@ function PasswordInput({ field }: { field: Field }) {
           style={{ width: '100%', fontSize: 13, padding: '9px 12px', paddingRight: isPw ? 38 : 12, borderRadius: 8, border: '1px solid rgba(26,25,21,0.16)', background: '#fff', fontFamily: 'inherit', color: '#1A1915' }}
         />
         {isPw && (
-          <button type="button" onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 4 }}>
-            {show ? '🙈' : '👁️'}
+          <button type="button" onClick={() => setShow(s => !s)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 5, display: 'flex', color: '#9E9B93' }}>
+            <Icon name={show ? 'eye-off' : 'eye'} size={16} strokeWidth={1.7} />
           </button>
         )}
       </div>
@@ -199,7 +200,7 @@ export default function EntegrasyonlarPage() {
         {/* Güvenlik notu */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, background: '#F7F6F2', border: '1px solid rgba(26,25,21,0.12)', borderRadius: 14, padding: '16px 20px', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 20 }}>🔒</span>
+            <Icon name="lock" size={20} color="#5A574F" strokeWidth={1.7} />
             <span style={{ fontSize: 12.5, color: '#5A574F', lineHeight: 1.5 }}>
               API anahtarlarınız AES-256 şifreleme ile güvenli şekilde saklanmaktadır. Hiçbir bilginiz üçüncü taraflarla paylaşılmaz.
             </span>

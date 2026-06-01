@@ -1,15 +1,16 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
+import Icon, { IconName } from './Icon';
 
-const navItems = [
-  { icon: '📦', label: 'Dashboard', href: '/dashboard' },
-  { icon: '📋', label: 'Siparişler', href: '/siparisler' },
-  { icon: '🚚', label: 'Kargo Gönder', href: '/gonder' },
-  { icon: '📊', label: 'Stok', href: '/stok' },
-  { icon: '🧾', label: 'Fatura', href: '/fatura' },
-  { icon: '🔌', label: 'Entegrasyonlar', href: '/entegrasyonlar' },
-  { icon: '⚙️', label: 'Ayarlar', href: '/ayarlar' },
+const navItems: { icon: IconName; label: string; href: string }[] = [
+  { icon: 'dashboard', label: 'Dashboard', href: '/dashboard' },
+  { icon: 'orders', label: 'Siparişler', href: '/siparisler' },
+  { icon: 'shipping', label: 'Kargo Gönder', href: '/gonder' },
+  { icon: 'stock', label: 'Stok', href: '/stok' },
+  { icon: 'invoice', label: 'Fatura', href: '/fatura' },
+  { icon: 'integrations', label: 'Entegrasyonlar', href: '/entegrasyonlar' },
+  { icon: 'settings', label: 'Ayarlar', href: '/ayarlar' },
 ];
 
 export default function Sidebar() {
@@ -43,7 +44,7 @@ export default function Sidebar() {
                 textDecoration: 'none',
               }}
             >
-              <span>{item.icon}</span>
+              <Icon name={item.icon} size={18} strokeWidth={active ? 2 : 1.8} />
               <span>{item.label}</span>
             </a>
           );
@@ -55,8 +56,9 @@ export default function Sidebar() {
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }}>demo@kargonoto.com</div>
         <button
           onClick={() => router.push('/login')}
-          style={{ width: '100%', padding: '8px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          style={{ width: '100%', padding: '8px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
         >
+          <Icon name="logout" size={15} strokeWidth={1.8} />
           Çıkış Yap
         </button>
       </div>
