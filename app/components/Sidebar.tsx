@@ -26,6 +26,15 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    title: 'Müşteri İlişkileri',
+    items: [
+      { icon: 'mail', label: 'Müşteri Soruları', href: '/sorular' },
+      { icon: 'folder', label: 'Talepler', href: '/talepler' },
+      { icon: 'chart', label: 'Buybox Takibi', href: '/buybox' },
+      { icon: 'card', label: 'Mutabakat', href: '/mutabakat' },
+    ],
+  },
+  {
     title: 'Stok & Finans',
     items: [
       { icon: 'stock', label: 'Stok Yönetimi', href: '/stok' },
