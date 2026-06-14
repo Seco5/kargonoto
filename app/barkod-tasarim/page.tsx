@@ -4,34 +4,11 @@ import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
 import Icon, { IconName } from '../components/Icon';
+import BarcodeCanvas, {
+  ElementType, LabelSize, CanvasElement, SIZES, TEXT_TYPES, LINE_TYPES, DEFAULT_TEXT, ElementContent,
+} from '../components/BarcodeCanvas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-type ElementType =
-  | 'siparis-no' | 'urun-adi' | 'paket-sirasi' | 'desi-kg' | 'odeme-tipi'
-  | 'alici-adi' | 'alici-telefon' | 'alici-adres' | 'sehir-ilce' | 'varis-noktasi'
-  | 'firma-adi' | 'firma-logo' | 'tarih' | 'kategori-kodu'
-  | 'ana-barkod' | 'qr-kod' | 'takip-no'
-  | 'ozel-metin' | 'yatay-cizgi' | 'dikey-cizgi' | 'koyu-alan';
-
-type LabelSize = '100x150' | '100x100' | '58x40';
-
-interface CanvasElement {
-  id: string;
-  type: ElementType;
-  x: number; y: number; width: number; height: number;
-  fontSize?: number;
-  fontWeight?: 'normal' | 'bold';
-  textAlign?: 'left' | 'center' | 'right';
-  color?: string;
-  bgColor?: string;
-  borderWidth?: number;
-  borderColor?: string;
-  content?: string;
-  rotate?: number;
-  zIndex?: number;
-  uppercase?: boolean;
-}
-
 interface State {
   elements: CanvasElement[];
   selectedId: string | null;
@@ -55,13 +32,6 @@ type Action =
   | { t: 'DUPLICATE'; id: string }
   | { t: 'NUDGE'; dx: number; dy: number }
   | { t: 'UNDO' };
-
-// ─── Label sizes (3.78px = 1mm) ─────────────────────────────────────────────
-const SIZES: Record<LabelSize, { w: number; h: number; label: string }> = {
-  '100x150': { w: 378, h: 567, label: '100×150mm' },
-  '100x100': { w: 378, h: 378, label: '100×100mm' },
-  '58x40': { w: 219, h: 151, label: '58×40mm' },
-};
 
 // ─── Field definitions (left panel) ─────────────────────────────────────────
 const FIELD_GROUPS: { group: string; items: { type: ElementType; label: string; icon: IconName }[] }[] = [
@@ -98,22 +68,12 @@ const FIELD_GROUPS: { group: string; items: { type: ElementType; label: string; 
   ]},
 ];
 
-const TEXT_TYPES: ElementType[] = ['siparis-no','urun-adi','paket-sirasi','desi-kg','odeme-tipi','alici-adi','alici-telefon','alici-adres','sehir-ilce','varis-noktasi','firma-adi','tarih','kategori-kodu','takip-no','ozel-metin'];
-const LINE_TYPES: ElementType[] = ['yatay-cizgi','dikey-cizgi','koyu-alan'];
-
 const LABELS: Record<ElementType, string> = {
   'siparis-no':'Sipariş No','urun-adi':'Ürün Adı','paket-sirasi':'Paket Sırası','desi-kg':'Desi / KG','odeme-tipi':'Ödeme Tipi',
   'alici-adi':'Alıcı Adı','alici-telefon':'Alıcı Telefon','alici-adres':'Alıcı Adresi','sehir-ilce':'Şehir / İlçe','varis-noktasi':'Varış Noktası',
   'firma-adi':'Firma Adı','firma-logo':'Firma Logosu','tarih':'Tarih','kategori-kodu':'Kategori Kodu',
   'ana-barkod':'Ana Barkod','qr-kod':'QR Kod','takip-no':'Takip No',
   'ozel-metin':'Özel Metin','yatay-cizgi':'Yatay Çizgi','dikey-cizgi':'Dikey Çizgi','koyu-alan':'Koyu Alan',
-};
-
-// default content/preview per type
-const DEFAULT_TEXT: Partial<Record<ElementType, string>> = {
-  'siparis-no':'#TY-8842901','urun-adi':'Kablosuz Kulaklık X3','paket-sirasi':'001/003','desi-kg':'1 DS/KG','odeme-tipi':'STD | ADRESE TESLİM',
-  'alici-adi':'AYŞE KAYA','alici-telefon':'0555 123 45 67','alici-adres':'Kadıköy Moda Cad. No:15','sehir-ilce':'İSTANBUL / KADIKÖY','varis-noktasi':'İSTANBUL TM',
-  'firma-adi':'Demo Mağaza','tarih':'14.06.2026 14:30','kategori-kodu':'C24','takip-no':'SND-8842901','ozel-metin':'Metin giriniz...',
 };
 
 // default sizing when dropped fresh
@@ -194,40 +154,6 @@ function reducer(state: State, a: Action): State {
   }
 }
 
-// ─── Visual previews ──────────────────────────────────────────────────────────
-function BarcodeBars() {
-  const bars = [3,2,4,2,3,1,4,2,3,1,4,2,3,5,2,4,1,3,2,5,1,4,2,3,4,2,1,5,2,3,4,1,3,2,5,1,4,2,3];
-  let x = 0; const rects: React.ReactNode[] = [];
-  bars.forEach((w, i) => { if (i % 2 === 0) rects.push(<rect key={i} x={x} y={0} width={w} height={40} fill="#000" />); x += w + (i % 2 === 0 ? 2 : 1); });
-  return <svg viewBox={`0 0 ${x} 40`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>{rects}</svg>;
-}
-function QRMock() {
-  const cells = 9; const r: React.ReactNode[] = [];
-  for (let i = 0; i < cells; i++) for (let j = 0; j < cells; j++) {
-    const corner = (i < 3 && j < 3) || (i < 3 && j > 5) || (i > 5 && j < 3);
-    const on = corner ? !(i > 0 && i < 2 && j > 0 && j < 2) && !(i > 0 && i < 2 && j > 6 && j < 8) && !(i > 6 && i < 8 && j > 0 && j < 2) : (i * 7 + j * 3) % 3 === 0;
-    if (on) r.push(<rect key={`${i}-${j}`} x={j} y={i} width={1} height={1} fill="#000" />);
-  }
-  return <svg viewBox={`0 0 ${cells} ${cells}`} style={{ width: '100%', height: '100%', display: 'block' }}>{r}</svg>;
-}
-
-function ElementContent({ el }: { el: CanvasElement }) {
-  const baseText: React.CSSProperties = {
-    width: '100%', height: '100%', fontSize: el.fontSize, fontWeight: el.fontWeight,
-    textAlign: el.textAlign, color: el.color, lineHeight: 1.15, overflow: 'hidden',
-    textTransform: el.uppercase ? 'uppercase' : 'none', display: 'flex', alignItems: 'center',
-    justifyContent: el.textAlign === 'center' ? 'center' : el.textAlign === 'right' ? 'flex-end' : 'flex-start',
-    padding: el.bgColor ? '2px 4px' : 0, boxSizing: 'border-box', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-  };
-  if (el.type === 'ana-barkod') return <div style={{ width: '100%', height: '100%' }}><BarcodeBars /></div>;
-  if (el.type === 'qr-kod') return <div style={{ width: '100%', height: '100%' }}><QRMock /></div>;
-  if (el.type === 'firma-logo') return <div style={{ width: '100%', height: '100%', background: '#E5E7EB', color: '#9CA3AF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>LOGO</div>;
-  if (LINE_TYPES.includes(el.type)) return <div style={{ width: '100%', height: '100%' }} />;
-  const text = el.content ?? DEFAULT_TEXT[el.type] ?? '';
-  const italic = el.type === 'ozel-metin' && (!el.content || el.content === DEFAULT_TEXT['ozel-metin']);
-  return <div style={{ ...baseText, fontStyle: italic ? 'italic' : 'normal', color: italic ? '#9CA3AF' : el.color }}>{text}</div>;
-}
-
 // ─── Property panel helpers ─────────────────────────────────────────────────
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -267,7 +193,8 @@ export default function BarkodTasarimPage() {
   const [showSave, setShowSave] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [tplName, setTplName] = useState('');
-  const [templates, setTemplates] = useState<{ name: string; elements: CanvasElement[] }[]>([]);
+  const [templates, setTemplates] = useState<{ name: string; elements: CanvasElement[]; labelSize?: LabelSize }[]>([]);
+  const [tplMenu, setTplMenu] = useState(false);
 
   const toast = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
@@ -277,7 +204,7 @@ export default function BarkodTasarimPage() {
 
   // load templates from localStorage
   useEffect(() => {
-    try { const raw = localStorage.getItem('kargonoto_barkod_templates'); if (raw) setTemplates(JSON.parse(raw)); } catch {}
+    try { const raw = localStorage.getItem('kargonoto_templates'); if (raw) setTemplates(JSON.parse(raw)); } catch {}
   }, []);
 
   const fontFamily = "'Plus Jakarta Sans', sans-serif";
@@ -350,13 +277,25 @@ export default function BarkodTasarimPage() {
     dispatch({ t: 'ADD', el: freshElement(type, Math.max(0, x), Math.max(0, y)) });
   };
 
+  const persist = (els: CanvasElement[], ls: LabelSize, name: string) => {
+    try {
+      localStorage.setItem('kargonoto_active_template', JSON.stringify({ name, elements: els, labelSize: ls, savedAt: new Date().toISOString() }));
+    } catch {}
+  };
+
   const saveTemplate = () => {
     const name = tplName.trim() || 'Şablonum';
-    const next = [...templates.filter(t => t.name !== name), { name, elements }];
+    const next = [...templates.filter(t => t.name !== name), { name, elements, labelSize }];
     setTemplates(next);
-    try { localStorage.setItem('kargonoto_barkod_templates', JSON.stringify(next)); } catch {}
+    try { localStorage.setItem('kargonoto_templates', JSON.stringify(next)); } catch {}
+    persist(elements, labelSize, name);   // son kaydedilen her zaman aktif
     setShowSave(false); setTplName('');
     toast('Şablon kaydedildi');
+  };
+
+  const makeDefault = (t: { name: string; elements: CanvasElement[]; labelSize?: LabelSize }) => {
+    persist(t.elements, t.labelSize || labelSize, t.name);
+    toast('Varsayılan şablon güncellendi');
   };
 
   const upd = (patch: Partial<CanvasElement>) => { if (selectedId) dispatch({ t: 'UPDATE', id: selectedId, patch }); };
@@ -392,12 +331,24 @@ export default function BarkodTasarimPage() {
             ))}
           </div>
           {templates.length > 0 && (
-            <select onChange={e => { const t = templates.find(x => x.name === e.target.value); if (e.target.value === '__def') { dispatch({ t: 'LOAD', elements: defaultTemplate() }); } else if (t) dispatch({ t: 'LOAD', elements: t.elements }); }}
-              defaultValue="" style={{ ...tbBtn(false), padding: '7px 10px', appearance: 'auto' }}>
-              <option value="" disabled>Şablon Seç</option>
-              <option value="__def">Varsayılan</option>
-              {templates.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setTplMenu(v => !v)} style={tbBtn(tplMenu)}><Icon name="folder" size={15} /> Şablon Seç <Icon name="chevron-down" size={13} /></button>
+              {tplMenu && (
+                <>
+                  <div onClick={() => setTplMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                  <div style={{ position: 'absolute', top: 44, left: 0, width: 260, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.12)', zIndex: 50, padding: 6 }}>
+                    <div onClick={() => { dispatch({ t: 'LOAD', elements: defaultTemplate() }); setTplMenu(false); }} style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1A1915', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="refresh" size={14} color="#6B7280" /> Varsayılan Tasarım</div>
+                    {templates.map(t => (
+                      <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 7 }}>
+                        <button onClick={() => { dispatch({ t: 'LOAD', elements: t.elements }); if (t.labelSize) dispatch({ t: 'SIZE', size: t.labelSize }); setTplMenu(false); }}
+                          style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily, fontSize: 13, fontWeight: 600, color: '#1A1915' }}>{t.name}</button>
+                        <button title="Varsayılan Yap" onClick={() => makeDefault(t)} style={{ background: '#EBF5EF', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: '#1A6B46', fontFamily }}>Varsayılan Yap</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button onClick={() => { dispatch({ t: 'LOAD', elements: defaultTemplate() }); toast('Varsayılan tasarım yüklendi'); }} style={tbBtn(false)}><Icon name="refresh" size={15} /> Varsayılanı Yükle</button>

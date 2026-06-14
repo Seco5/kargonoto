@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
 import Icon, { IconName } from '../components/Icon';
+import BarcodeCanvas, { OrderData, LabelSize, CanvasElement } from '../components/BarcodeCanvas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type MainTab = 'manuel' | 'trendyol';
@@ -149,6 +150,23 @@ const RECENT_UPLOADS = [
   { name: 'siparisler_ozel.csv', info: '12 sipariş · 28 May 2026 16:45' },
 ];
 
+// derive printable order data from a row (mock contact/address fields)
+const CITY_POOL = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya'];
+const DISTRICT_POOL = ['Kadıköy', 'Çankaya', 'Konak', 'Nilüfer', 'Muratpaşa'];
+function orderToData(r: Row): OrderData {
+  const i = Math.max(0, TEKLI.findIndex(x => x.id === r.id));
+  return {
+    orderNo: r.id,
+    customerName: r.musteri,
+    phone: `0555 ${100 + i} ${10 + i} ${20 + i}`,
+    address: `Moda Cad. No:${10 + i} Daire ${i + 1}`,
+    city: CITY_POOL[i % CITY_POOL.length],
+    district: DISTRICT_POOL[i % DISTRICT_POOL.length],
+    productName: r.urun,
+    trackingNo: `${r.kargo.slice(0, 3).toUpperCase()}-${r.id.replace(/\D/g, '').slice(0, 7)}`,
+  };
+}
+
 const todayMinus = (d: number) => {
   const dt = new Date(2026, 5, 14 - d);
   return dt.toISOString().slice(0, 10);
@@ -188,7 +206,8 @@ export default function SiparislerPage() {
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [accordionOpen, setAccordionOpen] = useState<string[]>([]);
   const [showHata, setShowHata] = useState(false);
-  const [showOzelBarkod, setShowOzelBarkod] = useState(false);
+  const [barkodPreview, setBarkodPreview] = useState<{ elements: CanvasElement[]; labelSize: LabelSize; data?: OrderData; orderNo: string } | null>(null);
+  const [noTpl, setNoTpl] = useState(false);
   const [cekiliyor, setCekiliyor] = useState(false);
   const [katalog, setKatalog] = useState<KatalogRow[]>(KATALOG_INIT);
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
@@ -232,6 +251,19 @@ export default function SiparislerPage() {
   const toggleAccordion = (id: string) => setAccordionOpen(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const clearSel = () => setSelectedRows([]);
 
+  const handleOzelBarkod = () => {
+    if (selectedRows.length === 0) return;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem('kargonoto_active_template'); } catch {}
+    if (!raw) { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); return; }
+    try {
+      const tpl = JSON.parse(raw);
+      if (!tpl?.elements?.length) { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); return; }
+      const row = TEKLI.find(r => r.id === selectedRows[0]);
+      setBarkodPreview({ elements: tpl.elements, labelSize: tpl.labelSize || '100x150', data: row ? orderToData(row) : undefined, orderNo: selectedRows[0] });
+    } catch { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); }
+  };
+
   const handleCek = () => {
     setCekiliyor(true);
     setTimeout(() => {
@@ -262,6 +294,7 @@ export default function SiparislerPage() {
         @keyframes slideDown { from { opacity:0; transform: translateY(-8px) } to { opacity:1; transform: translateY(0) } }
         @keyframes modalIn { from { opacity:0; transform: scale(0.96) } to { opacity:1; transform: scale(1) } }
         .acc { overflow: hidden; transition: max-height 0.3s ease; }
+        @media print { body * { visibility: hidden; } #barcode-print-area, #barcode-print-area * { visibility: visible; } #barcode-print-area { position: fixed; top: 0; left: 0; } }
       `}</style>
       <Sidebar />
       <TopBar title="Siparişler" />
@@ -346,7 +379,7 @@ export default function SiparislerPage() {
                       style={{ ...actionBtn('#6366F1', !hasSel), opacity: hasSel ? 1 : 0.5 }}>İşleme Al</button>
                     <button onClick={() => hasSel && toast(`${selectedRows.length} barkod kuyruğa alındı`)} disabled={!hasSel}
                       style={{ ...actionBtn('#22C55E', !hasSel), opacity: hasSel ? 1 : 0.5 }}><Icon name="printer" size={15} /> Yazdır</button>
-                    <button onClick={() => setShowOzelBarkod(true)} style={actionBtn('#A78BFA')}><Icon name="plus" size={15} /> Özel Barkod</button>
+                    <button onClick={handleOzelBarkod} disabled={!hasSel} title={!hasSel ? 'Önce sipariş seçin' : undefined} style={{ ...actionBtn('#A78BFA', !hasSel), opacity: hasSel ? 1 : 0.5 }}><Icon name="plus" size={15} /> Özel Barkod</button>
                   </div>
                 </div>
 
@@ -386,30 +419,40 @@ export default function SiparislerPage() {
         )}
       </main>
 
-      {/* ── Özel Barkod Modal ─────────────────────────────────────── */}
-      {showOzelBarkod && (
-        <div onClick={() => setShowOzelBarkod(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, padding: 28, width: 480, animation: 'modalIn 0.2s ease', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1A1915' }}>Özel Barkod Oluştur</h2>
-              <button onClick={() => setShowOzelBarkod(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B93', display: 'flex' }}><Icon name="x" size={20} /></button>
-            </div>
-            {[['Sipariş No', 'text'], ['Ürün Adı', 'text'], ['Adet', 'number']].map(([lbl, type]) => (
-              <div key={lbl} style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#5A574F', display: 'block', marginBottom: 6 }}>{lbl}</label>
-                <input type={type} defaultValue={type === 'number' ? 1 : ''} style={{ width: '100%', fontSize: 14, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily, boxSizing: 'border-box' }} />
+      {/* ── Özel Barkod Önizleme Modal ─────────────────────────────── */}
+      {barkodPreview && (
+        <div onClick={() => setBarkodPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, padding: 32, maxWidth: 680, width: '100%', maxHeight: '92vh', overflow: 'auto', animation: 'modalIn 0.2s ease', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1A1915' }}>Özel Barkod Önizlemesi</h2>
+                <div style={{ fontSize: 13, color: '#9E9B93', marginTop: 2 }}>{barkodPreview.orderNo}</div>
               </div>
-            ))}
-            <div style={{ marginBottom: 22 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#5A574F', display: 'block', marginBottom: 6 }}>Kargo Firması</label>
-              <select defaultValue="Sendeo" style={{ width: '100%', fontSize: 14, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily, background: '#fff' }}>
-                {KARGOLAR.map(k => <option key={k}>{k}</option>)}
-              </select>
+              <button onClick={() => setBarkodPreview(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B93', display: 'flex' }}><Icon name="x" size={20} /></button>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowOzelBarkod(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#5A574F' }}>İptal</button>
-              <button onClick={() => { setShowOzelBarkod(false); toast('Özel barkod oluşturuldu'); }} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily }}>Barkod Oluştur</button>
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 24, borderRadius: 14, background: '#E8E5DF', backgroundImage: 'radial-gradient(#0000001a 1px, transparent 1px)', backgroundSize: '16px 16px', marginBottom: 20 }}>
+              <BarcodeCanvas id="barcode-print-area" elements={barkodPreview.elements} labelSize={barkodPreview.labelSize} data={barkodPreview.data} />
             </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setBarkodPreview(null)} style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#5A574F', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="x" size={15} /> Kapat</button>
+              <button onClick={() => router.push('/barkod-tasarim')} style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #1A1915', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#1A1915', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="palette" size={15} /> Tasarımı Düzenle</button>
+              <button onClick={() => { window.print(); toast('Yazdırma işlemi başlatıldı'); }} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="printer" size={16} /> Yazdır</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Şablon yok uyarısı (amber toast) ───────────────────────── */}
+      {noTpl && (
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 200, background: '#FFFBEB', border: '1px solid #F59E0B', borderRadius: 14, padding: '16px 18px', maxWidth: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.15)', animation: 'slideDown 0.25s ease' }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Icon name="alert" size={20} color="#B45309" />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>Henüz barkod tasarımı oluşturmadınız.</div>
+              <div style={{ fontSize: 13, color: '#B45309', marginTop: 4, lineHeight: 1.4 }}>Barkod Tasarımı sayfasından bir şablon oluşturun.</div>
+              <button onClick={() => router.push('/barkod-tasarim')} style={{ marginTop: 12, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#1A1915', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Tasarıma Git <Icon name="arrow-right" size={14} /></button>
+            </div>
+            <button onClick={() => setNoTpl(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B45309', display: 'flex', alignSelf: 'flex-start' }}><Icon name="x" size={16} /></button>
           </div>
         </div>
       )}
