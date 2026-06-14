@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
 import Icon, { IconName } from '../components/Icon';
-import BarcodeCanvas, { OrderData, LabelSize, CanvasElement } from '../components/BarcodeCanvas';
+import BarcodeCanvas, { OrderData, LabelSize, CanvasElement, defaultTemplateElements, DEFAULT_LABEL_SIZE } from '../components/BarcodeCanvas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type MainTab = 'manuel' | 'trendyol';
@@ -207,7 +207,6 @@ export default function SiparislerPage() {
   const [accordionOpen, setAccordionOpen] = useState<string[]>([]);
   const [showHata, setShowHata] = useState(false);
   const [barkodPreview, setBarkodPreview] = useState<{ elements: CanvasElement[]; labelSize: LabelSize; data?: OrderData; orderNo: string } | null>(null);
-  const [noTpl, setNoTpl] = useState(false);
   const [cekiliyor, setCekiliyor] = useState(false);
   const [katalog, setKatalog] = useState<KatalogRow[]>(KATALOG_INIT);
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
@@ -253,15 +252,12 @@ export default function SiparislerPage() {
 
   const handleOzelBarkod = () => {
     if (selectedRows.length === 0) return;
-    let raw: string | null = null;
-    try { raw = localStorage.getItem('kargonoto_active_template'); } catch {}
-    if (!raw) { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); return; }
-    try {
-      const tpl = JSON.parse(raw);
-      if (!tpl?.elements?.length) { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); return; }
-      const row = TEKLI.find(r => r.id === selectedRows[0]);
-      setBarkodPreview({ elements: tpl.elements, labelSize: tpl.labelSize || '100x150', data: row ? orderToData(row) : undefined, orderNo: selectedRows[0] });
-    } catch { setNoTpl(true); setTimeout(() => setNoTpl(false), 7000); }
+    // Aktif (kaydedilmiş) şablon varsa onu, yoksa sistemin varsayılan etiketini bas
+    let tpl: { elements: CanvasElement[]; labelSize?: LabelSize } | null = null;
+    try { const raw = localStorage.getItem('kargonoto_active_template'); if (raw) tpl = JSON.parse(raw); } catch {}
+    if (!tpl?.elements?.length) tpl = { elements: defaultTemplateElements(), labelSize: DEFAULT_LABEL_SIZE };
+    const row = TEKLI.find(r => r.id === selectedRows[0]);
+    setBarkodPreview({ elements: tpl.elements, labelSize: tpl.labelSize || DEFAULT_LABEL_SIZE, data: row ? orderToData(row) : undefined, orderNo: selectedRows[0] });
   };
 
   const handleCek = () => {
@@ -438,21 +434,6 @@ export default function SiparislerPage() {
               <button onClick={() => router.push('/barkod-tasarim')} style={{ padding: '10px 18px', borderRadius: 10, border: '1.5px solid #1A1915', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#1A1915', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="palette" size={15} /> Tasarımı Düzenle</button>
               <button onClick={() => { window.print(); toast('Yazdırma işlemi başlatıldı'); }} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="printer" size={16} /> Yazdır</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Şablon yok uyarısı (amber toast) ───────────────────────── */}
-      {noTpl && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 200, background: '#FFFBEB', border: '1px solid #F59E0B', borderRadius: 14, padding: '16px 18px', maxWidth: 340, boxShadow: '0 8px 32px rgba(0,0,0,0.15)', animation: 'slideDown 0.25s ease' }}>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <Icon name="alert" size={20} color="#B45309" />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>Henüz barkod tasarımı oluşturmadınız.</div>
-              <div style={{ fontSize: 13, color: '#B45309', marginTop: 4, lineHeight: 1.4 }}>Barkod Tasarımı sayfasından bir şablon oluşturun.</div>
-              <button onClick={() => router.push('/barkod-tasarim')} style={{ marginTop: 12, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#1A1915', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Tasarıma Git <Icon name="arrow-right" size={14} /></button>
-            </div>
-            <button onClick={() => setNoTpl(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B45309', display: 'flex', alignSelf: 'flex-start' }}><Icon name="x" size={16} /></button>
           </div>
         </div>
       )}

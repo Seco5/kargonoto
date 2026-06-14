@@ -6,6 +6,7 @@ import TopBar from '../components/TopBar';
 import Icon, { IconName } from '../components/Icon';
 import BarcodeCanvas, {
   ElementType, LabelSize, CanvasElement, SIZES, TEXT_TYPES, LINE_TYPES, DEFAULT_TEXT, ElementContent,
+  defaultTemplateElements, DEFAULT_LABEL_SIZE,
 } from '../components/BarcodeCanvas';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -93,29 +94,8 @@ function freshElement(type: ElementType, x: number, y: number): CanvasElement {
   return { ...base, content: DEFAULT_TEXT[type], fontSize: 12 };
 }
 
-// ─── Default template (görseldeki etiket) ───────────────────────────────────
-function defaultTemplate(): CanvasElement[] {
-  const mk = (type: ElementType, p: Partial<CanvasElement>): CanvasElement => ({
-    ...freshElement(type, p.x ?? 0, p.y ?? 0), ...p, id: `${type}-${Math.random().toString(36).slice(2, 8)}`,
-  });
-  return [
-    mk('ana-barkod', { x: 300, y: 10, width: 60, height: 200, rotate: 90 }),
-    mk('siparis-no', { x: 300, y: 8, width: 70, height: 16, fontSize: 9, fontWeight: 'bold' }),
-    mk('takip-no', { x: 300, y: 220, width: 70, height: 14, fontSize: 8 }),
-    mk('firma-adi', { x: 120, y: 10, width: 170, height: 16, fontSize: 10, fontWeight: 'bold' }),
-    mk('alici-adi', { x: 120, y: 32, width: 170, height: 20, fontSize: 14, fontWeight: 'bold' }),
-    mk('alici-adres', { x: 120, y: 56, width: 170, height: 50, fontSize: 9 }),
-    mk('tarih', { x: 120, y: 110, width: 100, height: 12, fontSize: 8 }),
-    mk('odeme-tipi', { x: 120, y: 124, width: 100, height: 12, fontSize: 8 }),
-    mk('qr-kod', { x: 220, y: 100, width: 60, height: 60 }),
-    mk('kategori-kodu', { x: 8, y: 140, width: 50, height: 70, fontSize: 32, fontWeight: 'bold', bgColor: '#000000', color: '#ffffff', textAlign: 'center', content: 'C24' }),
-    mk('paket-sirasi', { x: 62, y: 170, width: 60, height: 24, fontSize: 18, fontWeight: 'bold' }),
-    mk('desi-kg', { x: 62, y: 196, width: 60, height: 14, fontSize: 10 }),
-    mk('yatay-cizgi', { x: 0, y: 240, width: 290, height: 2, bgColor: '#000000' }),
-    mk('varis-noktasi', { x: 8, y: 248, width: 280, height: 30, fontSize: 20, fontWeight: 'bold' }),
-    mk('urun-adi', { x: 8, y: 10, width: 110, height: 120, fontSize: 9, rotate: 90 }),
-  ];
-}
+// Varsayılan tasarım artık ortak BarcodeCanvas'tan gelir (defaultTemplateElements)
+const defaultTemplate = defaultTemplateElements;
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 const HISTORYABLE: Action['t'][] = ['ADD', 'DELETE', 'LOAD', 'REORDER', 'DUPLICATE', 'COMMIT'];
@@ -205,6 +185,16 @@ export default function BarkodTasarimPage() {
   // load templates from localStorage
   useEffect(() => {
     try { const raw = localStorage.getItem('kargonoto_templates'); if (raw) setTemplates(JSON.parse(raw)); } catch {}
+    // Açılışta: kayıtlı aktif şablonu, yoksa görseldeki varsayılan etiketi yükle
+    try {
+      const act = localStorage.getItem('kargonoto_active_template');
+      if (act) {
+        const t = JSON.parse(act);
+        if (t?.elements?.length) { dispatch({ t: 'SIZE', size: t.labelSize || DEFAULT_LABEL_SIZE }); dispatch({ t: 'LOAD', elements: t.elements }); return; }
+      }
+    } catch {}
+    dispatch({ t: 'SIZE', size: DEFAULT_LABEL_SIZE });
+    dispatch({ t: 'LOAD', elements: defaultTemplate() });
   }, []);
 
   const fontFamily = "'Plus Jakarta Sans', sans-serif";
@@ -337,7 +327,7 @@ export default function BarkodTasarimPage() {
                 <>
                   <div onClick={() => setTplMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                   <div style={{ position: 'absolute', top: 44, left: 0, width: 260, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,0.12)', zIndex: 50, padding: 6 }}>
-                    <div onClick={() => { dispatch({ t: 'LOAD', elements: defaultTemplate() }); setTplMenu(false); }} style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1A1915', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="refresh" size={14} color="#6B7280" /> Varsayılan Tasarım</div>
+                    <div onClick={() => { dispatch({ t: 'SIZE', size: DEFAULT_LABEL_SIZE }); dispatch({ t: 'LOAD', elements: defaultTemplate() }); setTplMenu(false); }} style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1A1915', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="refresh" size={14} color="#6B7280" /> Varsayılan Tasarım</div>
                     {templates.map(t => (
                       <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 7 }}>
                         <button onClick={() => { dispatch({ t: 'LOAD', elements: t.elements }); if (t.labelSize) dispatch({ t: 'SIZE', size: t.labelSize }); setTplMenu(false); }}
@@ -351,7 +341,7 @@ export default function BarkodTasarimPage() {
             </div>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button onClick={() => { dispatch({ t: 'LOAD', elements: defaultTemplate() }); toast('Varsayılan tasarım yüklendi'); }} style={tbBtn(false)}><Icon name="refresh" size={15} /> Varsayılanı Yükle</button>
+            <button onClick={() => { dispatch({ t: 'SIZE', size: DEFAULT_LABEL_SIZE }); dispatch({ t: 'LOAD', elements: defaultTemplate() }); toast('Varsayılan tasarım yüklendi'); }} style={tbBtn(false)}><Icon name="refresh" size={15} /> Varsayılanı Yükle</button>
             <button onClick={() => setShowSave(true)} style={tbBtn(false)}><Icon name="save" size={15} /> Şablon Kaydet</button>
             <button onClick={() => setShowPrint(true)} style={tbBtn(false, true)}><Icon name="printer" size={15} /> Test Yazdır</button>
           </div>

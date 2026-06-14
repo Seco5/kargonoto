@@ -86,6 +86,57 @@ function resolveContent(el: CanvasElement, data?: OrderData): { text: string; pl
   return { text, placeholder: false };
 }
 
+// ─── Built-in default template (kargo etiketi — görseldeki düzen) ───────────
+// Sistem hiçbir özel şablon yoksa bunu basar. Canvas: 100×100mm (378×378px).
+export const DEFAULT_LABEL_SIZE: LabelSize = '100x100';
+
+export function defaultTemplateElements(): CanvasElement[] {
+  let n = 0;
+  const E = (type: ElementType, p: Partial<CanvasElement>): CanvasElement => ({
+    id: `def-${type}-${n++}-${Math.random().toString(36).slice(2, 6)}`,
+    type, x: 0, y: 0, width: 100, height: 18, color: '#000000', textAlign: 'left', fontWeight: 'normal', fontSize: 10, ...p,
+  });
+  const MAIN = 290; // sol ana alan genişliği (sağ dikey şerit için yer bırak)
+  return [
+    // üst satır
+    E('tarih', { x: 14, y: 8, width: 160, height: 12, fontSize: 8 }),
+    E('ozel-metin', { x: 174, y: 8, width: 120, height: 12, fontSize: 8, textAlign: 'right', content: 'www.asilsoft.com' }),
+    // ana barkod + numara
+    E('ana-barkod', { x: 14, y: 22, width: MAIN - 14, height: 44 }),
+    E('ozel-metin', { x: 14, y: 68, width: MAIN - 14, height: 12, fontSize: 9, textAlign: 'center', content: '8880030743585643' }),
+    E('yatay-cizgi', { x: 14, y: 84, width: MAIN - 14, height: 1.5, bgColor: '#000000' }),
+    // gönderen
+    E('ozel-metin', { x: 14, y: 90, width: 120, height: 10, fontSize: 7, fontWeight: 'bold', content: 'GÖNDEREN:' }),
+    E('firma-adi', { x: 14, y: 100, width: 200, height: 12, fontSize: 9, fontWeight: 'bold' }),
+    // alıcı
+    E('ozel-metin', { x: 14, y: 116, width: 80, height: 10, fontSize: 7, fontWeight: 'bold', content: 'ALICI:' }),
+    E('alici-adi', { x: 14, y: 126, width: MAIN - 14, height: 18, fontSize: 14, fontWeight: 'bold' }),
+    E('alici-adres', { x: 14, y: 146, width: MAIN - 14, height: 34, fontSize: 8.5 }),
+    E('yatay-cizgi', { x: 14, y: 184, width: MAIN - 14, height: 1.5, bgColor: '#000000' }),
+    // orta blok: QR + bilgi + QR
+    E('qr-kod', { x: 14, y: 192, width: 48, height: 48 }),
+    E('tarih', { x: 70, y: 192, width: 170, height: 11, fontSize: 8 }),
+    E('takip-no', { x: 70, y: 204, width: 170, height: 11, fontSize: 8 }),
+    E('ozel-metin', { x: 70, y: 216, width: 170, height: 11, fontSize: 8, content: 'ÖDEME: P.O.' }),
+    E('odeme-tipi', { x: 70, y: 228, width: 170, height: 11, fontSize: 8 }),
+    E('qr-kod', { x: 246, y: 192, width: 48, height: 48 }),
+    // kategori kutusu + paket + desi
+    E('kategori-kodu', { x: 14, y: 250, width: 66, height: 46, fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#000000', borderWidth: 1.5, borderColor: '#000000', content: 'A20' }),
+    E('ozel-metin', { x: 18, y: 252, width: 30, height: 10, fontSize: 7, content: '3.3' }),
+    E('paket-sirasi', { x: 90, y: 254, width: 130, height: 26, fontSize: 22, fontWeight: 'bold', content: '001/001' }),
+    E('desi-kg', { x: 90, y: 282, width: 130, height: 14, fontSize: 11, content: '1 DS/KG' }),
+    E('yatay-cizgi', { x: 14, y: 304, width: MAIN - 14, height: 1.5, bgColor: '#000000' }),
+    // içerik
+    E('ozel-metin', { x: 14, y: 310, width: 200, height: 10, fontSize: 8, fontWeight: 'bold', content: 'İÇERİK BİLGİSİ:' }),
+    E('urun-adi', { x: 14, y: 322, width: MAIN - 14, height: 48, fontSize: 8 }),
+    // sağ dikey şerit (varış noktası) — rotate 90, transform-origin top-left
+    E('dikey-cizgi', { x: 302, y: 6, width: 1.5, height: 366, bgColor: '#000000' }),
+    E('varis-noktasi', { x: 374, y: 30, width: 220, height: 30, rotate: 90, fontSize: 20, fontWeight: 'bold' }),
+    E('ozel-metin', { x: 348, y: 30, width: 200, height: 12, rotate: 90, fontSize: 9, content: 'PURSAKLAR DM' }),
+    E('ozel-metin', { x: 330, y: 30, width: 160, height: 10, rotate: 90, fontSize: 8, content: 'DIS HAT' }),
+  ];
+}
+
 // ─── Visual primitives ────────────────────────────────────────────────────────
 export function BarcodeBars() {
   const bars = [3,2,4,2,3,1,4,2,3,1,4,2,3,5,2,4,1,3,2,5,1,4,2,3,4,2,1,5,2,3,4,1,3,2,5,1,4,2,3];
