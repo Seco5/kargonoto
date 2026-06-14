@@ -11,7 +11,8 @@ export type IconName =
   | 'coins' | 'phone' | 'arrow-right'
   | 'plus' | 'trash' | 'grip' | 'x' | 'power'
   | 'camera' | 'card' | 'gift' | 'store' | 'home'
-  | 'chevron-down' | 'file' | 'upload' | 'image';
+  | 'chevron-down' | 'file' | 'upload' | 'image'
+  | 'palette' | 'save' | 'grid' | 'qrcode' | 'barcode';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   // Layout / grid dashboard
@@ -281,6 +282,42 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <circle cx="8.5" cy="9.5" r="1.5" />
       <path d="m4 18 5-5 4 4 3-3 4 4" />
+    </>
+  ),
+  palette: (
+    <>
+      <path d="M12 3a9 9 0 0 0 0 18c1.7 0 2-1.3 1.2-2.2-.8-.9-.3-2.3 1-2.3H17a4 4 0 0 0 4-4c0-5-4-9.5-9-9.5z" />
+      <circle cx="7.5" cy="11" r="1" />
+      <circle cx="12" cy="7.5" r="1" />
+      <circle cx="16.5" cy="11" r="1" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+      <path d="M8 3v5h7V3" />
+      <path d="M8 14h8v7H8z" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>
+  ),
+  qrcode: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3M21 14v7h-7M17 21h.01" />
+    </>
+  ),
+  barcode: (
+    <>
+      <path d="M4 5v14M7 5v14M10 5v14M13 5v14M16 5v14M20 5v14" />
     </>
   ),
 };

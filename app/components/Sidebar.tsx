@@ -21,6 +21,7 @@ const navGroups: NavGroup[] = [
       { icon: 'shipping', label: 'Kargo Gönder', href: '/gonder' },
       { icon: 'refresh', label: 'Kargo Takip', href: '/takip' },
       { icon: 'undo', label: 'İade Yönetimi', href: '/iade' },
+      { icon: 'palette', label: 'Barkod Tasarımı', href: '/barkod-tasarim' },
       { icon: 'zap', label: 'Otomasyon Kuralları', href: '/otomasyon' },
     ],
   },
