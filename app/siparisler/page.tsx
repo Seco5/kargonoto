@@ -1,640 +1,822 @@
 'use client';
 
-import { useState, useMemo, JSX, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
-import Icon from '../components/Icon';
+import Icon, { IconName } from '../components/Icon';
 
-// small helper for inline icon + label inside buttons/labels
-function IconText({ name, color, children, gap = 6, size = 15 }: { name: import('../components/Icon').IconName; color?: string; children: React.ReactNode; gap?: number; size?: number }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap }}>
-      <Icon name={name} size={size} color={color} strokeWidth={1.8} />{children}
-    </span>
-  );
+// ─── Types ──────────────────────────────────────────────────────────────────
+type MainTab = 'manuel' | 'trendyol';
+type SubTab = 'tekli' | 'coklu' | 'teslimat' | 'katalog';
+type View = 'tablo' | 'urun-listesi' | 'adet-gruplari' | 'siparis-kartlari';
+type Platform = 'TY' | 'HB' | 'N11';
+
+interface Row {
+  id: string;            // sipariş no
+  urun: string;
+  ekstra?: number;       // +N additional products
+  musteri: string;
+  platform: Platform;
+  kargo: string;
+  durum: string;         // sistem durumu
+  yazdirildi?: string;   // tarih saat | undefined
+  ka: string;            // K/A
+  teslimat: string;      // tahmini teslimat (kısa)
+  iade?: boolean;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-type Status   = 'Bekliyor' | 'Kargoda' | 'Teslim Edildi' | 'İade';
-type Platform = 'Trendyol' | 'Hepsiburada' | 'N11' | 'ÇiçekSepeti' | 'Trendyol Go' | 'Getir' | 'Yemeksepeti' | 'Amazon';
-type Carrier  = 'Sendeo' | 'Aras' | 'Yurtiçi' | 'MNG' | 'Sürat' | 'PTT' | 'Getir Kargo';
-type SyncState = 'idle' | 'loading' | 'success' | 'error';
-
-interface Product {
-  id: string; name: string; sku: string; image: string; qty: number;
-}
-interface Order {
-  id: string; customer: string; platform: Platform; carrier: Carrier;
-  status: Status; date: string; packages: number;
-  products: Product[]; printed: boolean; printedAt?: string;
-  isNew?: boolean; // flag freshly-synced rows
-}
-interface PlatformConfig {
-  key: Platform;
-  label: string;
-  abbr: string;
-  bg: string;
-  color: string;
-  icon: string;
-  syncState: SyncState;
-  lastSync: string | null;
-  newCount: number;
-  enabled: boolean;
+interface CokluRow {
+  id: string;
+  barkod: string;
+  platform: Platform;
+  durum: string;
+  yazdirildi?: string;
+  ka: string;
+  urunler: string[];
+  tarih: string;
+  yazdirildiBg?: boolean;
+  detay: { urun: string; barkod: string; adet: number }[];
 }
 
-// ─── Dummy images ─────────────────────────────────────────────────────────────
-const IMG: Record<string, string> = {
-  'PRD-001': 'https://picsum.photos/seed/headphone/64/64',
-  'PRD-002': 'https://picsum.photos/seed/bag/64/64',
-  'PRD-003': 'https://picsum.photos/seed/watch/64/64',
-  'PRD-004': 'https://picsum.photos/seed/mouse/64/64',
-  'PRD-005': 'https://picsum.photos/seed/keyboard/64/64',
-  'PRD-006': 'https://picsum.photos/seed/tshirt/64/64',
-  'PRD-007': 'https://picsum.photos/seed/shoe/64/64',
-  'PRD-008': 'https://picsum.photos/seed/phone/64/64',
-  'PRD-009': 'https://picsum.photos/seed/lamp/64/64',
-  'PRD-010': 'https://picsum.photos/seed/book/64/64',
-  'PRD-011': 'https://picsum.photos/seed/charger/64/64',
-  'PRD-012': 'https://picsum.photos/seed/jacket/64/64',
-  'PRD-013': 'https://picsum.photos/seed/flower/64/64',
-  'PRD-014': 'https://picsum.photos/seed/pizza/64/64',
-  'PRD-015': 'https://picsum.photos/seed/sushi/64/64',
-  'PRD-016': 'https://picsum.photos/seed/amazon/64/64',
+interface KatalogRow {
+  sku: string;
+  orijinal: string;
+  kisa: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const KARGOLAR = ['Sendeo', 'Aras', 'Yurtiçi', 'MNG', 'Sürat', 'PTT', 'DHL', 'UPS', 'HepsiJet', 'Kargoist'];
+
+const PLATFORM_STYLE: Record<Platform, { bg: string; color: string; label: string }> = {
+  TY: { bg: '#FEE2E0', color: '#C94E1A', label: 'TY' },
+  HB: { bg: '#FEF3C7', color: '#B45309', label: 'HB' },
+  N11: { bg: '#EDE9FE', color: '#6D28D9', label: 'N11' },
 };
 
-// ─── Initial orders ───────────────────────────────────────────────────────────
-const INITIAL_ORDERS: Order[] = [
-  { id: '#TY-8842901', customer: 'Ayşe Kaya', platform: 'Trendyol', carrier: 'Sendeo', status: 'Bekliyor', date: '01 Haz', packages: 1, printed: false, products: [{ id: 'PRD-001', name: 'Kablosuz Kulaklık Pro X3', sku: 'SKU-00441', image: IMG['PRD-001'], qty: 1 }] },
-  { id: '#HB-5521038', customer: 'Mehmet Yılmaz', platform: 'Hepsiburada', carrier: 'Aras', status: 'Bekliyor', date: '01 Haz', packages: 2, printed: false, products: [{ id: 'PRD-002', name: 'Deri Çanta, Siyah', sku: 'SKU-01123', image: IMG['PRD-002'], qty: 1 }, { id: 'PRD-005', name: 'Mekanik Klavye TKL', sku: 'SKU-00892', image: IMG['PRD-005'], qty: 1 }] },
-  { id: '#N11-3310094', customer: 'Fatma Şahin', platform: 'N11', carrier: 'Yurtiçi', status: 'Bekliyor', date: '31 May', packages: 1, printed: true, printedAt: '31 May 14:22', products: [{ id: 'PRD-003', name: 'Akıllı Saat SE 2025', sku: 'SKU-02201', image: IMG['PRD-003'], qty: 1 }] },
-  { id: '#TY-8843212', customer: 'Ali Rıza', platform: 'Trendyol', carrier: 'Sendeo', status: 'Kargoda', date: '31 May', packages: 1, printed: true, printedAt: '31 May 10:05', products: [{ id: 'PRD-004', name: 'Gaming Mouse + Pad Set', sku: 'SKU-00892', image: IMG['PRD-004'], qty: 1 }] },
-  { id: '#HB-5521199', customer: 'Zeynep Ak', platform: 'Hepsiburada', carrier: 'MNG', status: 'İade', date: '30 May', packages: 1, printed: true, printedAt: '30 May 09:10', products: [{ id: 'PRD-006', name: 'Oversize T-Shirt', sku: 'SKU-03312', image: IMG['PRD-006'], qty: 2 }] },
-  { id: '#TY-8844001', customer: 'Murat Demir', platform: 'Trendyol', carrier: 'Sendeo', status: 'Bekliyor', date: '30 May', packages: 3, printed: false, products: [{ id: 'PRD-007', name: 'Spor Ayakkabı', sku: 'SKU-04401', image: IMG['PRD-007'], qty: 1 }, { id: 'PRD-008', name: 'Akıllı Telefon Kılıfı', sku: 'SKU-04402', image: IMG['PRD-008'], qty: 1 }, { id: 'PRD-011', name: 'Hızlı Şarj Adaptörü', sku: 'SKU-04403', image: IMG['PRD-011'], qty: 1 }] },
-  { id: '#N11-3310201', customer: 'Selin Çelik', platform: 'N11', carrier: 'Aras', status: 'Bekliyor', date: '29 May', packages: 1, printed: false, products: [{ id: 'PRD-009', name: 'Masa Lambası LED', sku: 'SKU-05510', image: IMG['PRD-009'], qty: 1 }] },
-  { id: '#HB-5521300', customer: 'Kemal Arslan', platform: 'Hepsiburada', carrier: 'Sendeo', status: 'Kargoda', date: '29 May', packages: 2, printed: true, printedAt: '29 May 16:45', products: [{ id: 'PRD-010', name: 'Programlama Kitabı', sku: 'SKU-06601', image: IMG['PRD-010'], qty: 1 }, { id: 'PRD-001', name: 'Kablosuz Kulaklık Pro X3', sku: 'SKU-00441', image: IMG['PRD-001'], qty: 1 }] },
-  { id: '#TY-8844102', customer: 'Merve Koç', platform: 'Trendyol', carrier: 'Yurtiçi', status: 'Kargoda', date: '28 May', packages: 1, printed: true, printedAt: '28 May 11:30', products: [{ id: 'PRD-012', name: 'Deri Mont', sku: 'SKU-07701', image: IMG['PRD-012'], qty: 1 }] },
-  { id: '#N11-3310388', customer: 'Burak Yurt', platform: 'N11', carrier: 'MNG', status: 'Teslim Edildi', date: '28 May', packages: 1, printed: true, printedAt: '28 May 08:15', products: [{ id: 'PRD-004', name: 'Gaming Mouse + Pad Set', sku: 'SKU-00892', image: IMG['PRD-004'], qty: 1 }] },
-  { id: '#TY-8844250', customer: 'Canan Yıldız', platform: 'Trendyol', carrier: 'Sürat', status: 'Bekliyor', date: '01 Haz', packages: 2, printed: false, products: [{ id: 'PRD-003', name: 'Akıllı Saat SE 2025', sku: 'SKU-02201', image: IMG['PRD-003'], qty: 1 }, { id: 'PRD-008', name: 'Akıllı Telefon Kılıfı', sku: 'SKU-04402', image: IMG['PRD-008'], qty: 2 }] },
-  { id: '#HB-5521410', customer: 'Emre Aktaş', platform: 'Hepsiburada', carrier: 'Aras', status: 'Bekliyor', date: '01 Haz', packages: 1, printed: false, products: [{ id: 'PRD-005', name: 'Mekanik Klavye TKL', sku: 'SKU-00892', image: IMG['PRD-005'], qty: 1 }] },
-];
-
-// ─── Platform definitions ─────────────────────────────────────────────────────
-const PLATFORM_DEFS: Omit<PlatformConfig, 'syncState' | 'lastSync' | 'newCount'>[] = [
-  { key: 'Trendyol',     label: 'Trendyol',      abbr: 'TY',  bg: 'rgba(201,78,26,0.1)',   color: '#C94E1A', icon: '🛒', enabled: true  },
-  { key: 'Hepsiburada',  label: 'Hepsiburada',   abbr: 'HB',  bg: 'rgba(255,140,0,0.1)',   color: '#C47A00', icon: '🟠', enabled: true  },
-  { key: 'N11',          label: 'N11',            abbr: 'N11', bg: 'rgba(100,50,200,0.1)',  color: '#6432C8', icon: '🟣', enabled: true  },
-  { key: 'ÇiçekSepeti',  label: 'ÇiçekSepeti',   abbr: 'ÇS',  bg: 'rgba(236,72,153,0.1)',  color: '#DB2777', icon: '🌸', enabled: false },
-  { key: 'Trendyol Go',  label: 'Trendyol Go',   abbr: 'TGO', bg: 'rgba(201,78,26,0.08)',  color: '#C94E1A', icon: '⚡', enabled: false },
-  { key: 'Getir',        label: 'Getir',          abbr: 'GET', bg: 'rgba(103,58,183,0.1)',  color: '#5E35B1', icon: '🟣', enabled: false },
-  { key: 'Yemeksepeti',  label: 'Yemeksepeti',   abbr: 'YS',  bg: 'rgba(239,68,68,0.1)',   color: '#DC2626', icon: '🍔', enabled: false },
-  { key: 'Amazon',       label: 'Amazon',         abbr: 'AMZ', bg: 'rgba(255,153,0,0.12)',  color: '#B45309', icon: '📦', enabled: false },
-];
-
-// ─── Mock new orders that arrive on sync per platform ────────────────────────
-function mockFetch(platform: Platform): Promise<Order[]> {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
-
-  // Simulate occasional error for demo realism
-  const willError = Math.random() < 0.08;
-
-  return new Promise((resolve, reject) => {
-    const delay = 900 + Math.random() * 1200;
-    setTimeout(() => {
-      if (willError) { reject(new Error('API bağlantı hatası')); return; }
-
-      const pool: Record<Platform, Order[]> = {
-        'Trendyol': [
-          { id: `#TY-${Date.now().toString().slice(-7)}`, customer: 'Hande Yıldırım', platform: 'Trendyol', carrier: 'Sendeo', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-001', name: 'Kablosuz Kulaklık Pro X3', sku: 'SKU-00441', image: IMG['PRD-001'], qty: 1 }] },
-          { id: `#TY-${(Date.now()+1).toString().slice(-7)}`, customer: 'Barış Öztürk', platform: 'Trendyol', carrier: 'Sendeo', status: 'Bekliyor', date: dateStr, packages: 2, printed: false, isNew: true, products: [{ id: 'PRD-007', name: 'Spor Ayakkabı', sku: 'SKU-04401', image: IMG['PRD-007'], qty: 1 }, { id: 'PRD-011', name: 'Hızlı Şarj Adaptörü', sku: 'SKU-04403', image: IMG['PRD-011'], qty: 1 }] },
-        ],
-        'Hepsiburada': [
-          { id: `#HB-${Date.now().toString().slice(-7)}`, customer: 'Didem Kara', platform: 'Hepsiburada', carrier: 'Aras', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-003', name: 'Akıllı Saat SE 2025', sku: 'SKU-02201', image: IMG['PRD-003'], qty: 1 }] },
-        ],
-        'N11': [
-          { id: `#N11-${Date.now().toString().slice(-7)}`, customer: 'Tolga Şimşek', platform: 'N11', carrier: 'Yurtiçi', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-009', name: 'Masa Lambası LED', sku: 'SKU-05510', image: IMG['PRD-009'], qty: 1 }] },
-        ],
-        'ÇiçekSepeti': [
-          { id: `#CS-${Date.now().toString().slice(-7)}`, customer: 'Aylin Çetin', platform: 'ÇiçekSepeti', carrier: 'Sendeo', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-013', name: 'Gül Buketi 50 Adet', sku: 'SKU-09901', image: IMG['PRD-013'], qty: 1 }] },
-        ],
-        'Trendyol Go': [
-          { id: `#TGO-${Date.now().toString().slice(-7)}`, customer: 'Serdar Koç', platform: 'Trendyol Go', carrier: 'Getir Kargo', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-011', name: 'Hızlı Şarj Adaptörü', sku: 'SKU-04403', image: IMG['PRD-011'], qty: 2 }] },
-        ],
-        'Getir': [
-          { id: `#GET-${Date.now().toString().slice(-7)}`, customer: 'Özlem Aydın', platform: 'Getir', carrier: 'Getir Kargo', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-014', name: 'Karışık Pizza Large', sku: 'SKU-11100', image: IMG['PRD-014'], qty: 1 }] },
-        ],
-        'Yemeksepeti': [
-          { id: `#YS-${Date.now().toString().slice(-7)}`, customer: 'Cem Yılmaz', platform: 'Yemeksepeti', carrier: 'PTT', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-015', name: 'Sushi Set 32 Parça', sku: 'SKU-11200', image: IMG['PRD-015'], qty: 1 }] },
-        ],
-        'Amazon': [
-          { id: `#AMZ-${Date.now().toString().slice(-7)}`, customer: 'Linda Weber', platform: 'Amazon', carrier: 'MNG', status: 'Bekliyor', date: dateStr, packages: 1, printed: false, isNew: true, products: [{ id: 'PRD-016', name: 'Laptop Stand Aluminium', sku: 'SKU-12300', image: IMG['PRD-016'], qty: 1 }] },
-          { id: `#AMZ-${(Date.now()+2).toString().slice(-7)}`, customer: 'John Smith', platform: 'Amazon', carrier: 'Aras', status: 'Bekliyor', date: dateStr, packages: 2, printed: false, isNew: true, products: [{ id: 'PRD-001', name: 'Kablosuz Kulaklık Pro X3', sku: 'SKU-00441', image: IMG['PRD-001'], qty: 1 }, { id: 'PRD-004', name: 'Gaming Mouse + Pad Set', sku: 'SKU-00892', image: IMG['PRD-004'], qty: 1 }] },
-        ],
-      };
-
-      void timeStr; // used to tag logs, suppress lint
-      resolve(pool[platform] ?? []);
-    }, delay);
-  });
-}
-
-// ─── Style helpers ────────────────────────────────────────────────────────────
-const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  'Bekliyor':     { bg: '#FEF3C7', color: '#D97706' },
-  'Kargoda':      { bg: '#DBEAFE', color: '#1D4ED8' },
-  'Teslim Edildi':{ bg: '#D1FAE5', color: '#065F46' },
-  'İade':         { bg: '#FEE2E2', color: '#DC2626' },
+const DURUM_STYLE: Record<string, { bg: string; color: string }> = {
+  'Bekliyor': { bg: '#FEF3C7', color: '#92400E' },
+  'Kargoda': { bg: '#DBEAFE', color: '#1D4ED8' },
+  'Teslim Edildi': { bg: '#D1FAE5', color: '#065F46' },
+  'İade': { bg: '#FEE2E2', color: '#DC2626' },
+  'Yeni': { bg: '#DBEAFE', color: '#1D4ED8' },
+  'İşleme Alındı': { bg: '#D1FAE5', color: '#065F46' },
 };
-const CARRIERS: Carrier[] = ['Sendeo','Aras','Yurtiçi','MNG','Sürat','PTT','Getir Kargo'];
 
-// ─── Barcode SVG ──────────────────────────────────────────────────────────────
-function BarcodeSVG() {
-  const bars = [3,2,4,2,3,1,4,2,3,1,4,2,3,5,2,4,1,3,2,5,1,4,2,3,4,2,1,5,2,3,4,1,3,2,5,1,4,2,3,1,4,3,2,5,1,4,2,3,5,1,4,2,3,4,1,5,2,3,4,1,3,2,3];
-  let x = 0;
-  const rects: JSX.Element[] = [];
-  bars.forEach((w, i) => {
-    if (i % 2 === 0) rects.push(<rect key={i} x={x} y={0} width={w} height={36} fill="#1A1915" />);
-    x += w + (i % 2 === 0 ? 2 : 1);
-  });
-  return <svg viewBox={`0 0 ${x} 36`} style={{ width: '100%', height: 36 }}>{rects}</svg>;
+// Tekli gönderiler mock data
+const TEKLI: Row[] = [
+  { id: '#TY-8842901', urun: 'Kablosuz Kulaklık Pro X3', musteri: 'Ayşe Kaya', platform: 'TY', kargo: 'Sendeo', durum: 'Bekliyor', ka: '1/1', teslimat: '02 Haz' },
+  { id: '#HB-5521038', urun: 'Deri Çanta, Siyah', ekstra: 1, musteri: 'Mehmet Yılmaz', platform: 'HB', kargo: 'Aras', durum: 'Bekliyor', ka: '2/2', teslimat: '01 Haz' },
+  { id: '#N11-3310094', urun: 'Akıllı Saat SE 2025', musteri: 'Fatma Şahin', platform: 'N11', kargo: 'Yurtiçi', durum: 'Bekliyor', ka: '1/1', teslimat: '31 May' },
+  { id: '#TY-8843212', urun: 'Gaming Mouse + Pad Set', musteri: 'Ali Rıza', platform: 'TY', kargo: 'Sendeo', durum: 'Kargoda', yazdirildi: '31.05 14:30', ka: '1/1', teslimat: '31 May' },
+  { id: '#HB-5521199', urun: 'Oversize T-Shirt', musteri: 'Zeynep Ak', platform: 'HB', kargo: 'MNG', durum: 'İade', yazdirildi: '30.05 11:15', ka: '1/1', teslimat: '30 May', iade: true },
+  { id: '#TY-8844001', urun: 'Spor Ayakkabı', ekstra: 2, musteri: 'Murat Demir', platform: 'TY', kargo: 'Sendeo', durum: 'Bekliyor', ka: '3/3', teslimat: '02 Haz' },
+  { id: '#N11-3310201', urun: 'Masa Lambası LED', musteri: 'Selin Çelik', platform: 'N11', kargo: 'Aras', durum: 'Bekliyor', ka: '1/1', teslimat: '02 Haz' },
+  { id: '#HB-5521300', urun: 'Programlama Kitabı', ekstra: 1, musteri: 'Kemal Arslan', platform: 'HB', kargo: 'Sendeo', durum: 'Kargoda', yazdirildi: '29.05 09:45', ka: '2/2', teslimat: '30 May' },
+  { id: '#TY-8844102', urun: 'Bluetooth Kulaklık', musteri: 'Merve Koç', platform: 'TY', kargo: 'Yurtiçi', durum: 'Teslim Edildi', yazdirildi: '28.05 16:20', ka: '1/1', teslimat: '29 May' },
+  { id: '#N11-3310388', urun: 'Ahşap Saat', musteri: 'Burak Yurt', platform: 'N11', kargo: 'MNG', durum: 'Bekliyor', ka: '1/1', teslimat: '03 Haz' },
+];
+
+// Teslimat listesi: tahmini + gerçek teslimat
+const TESLIMAT_EXTRA: Record<string, { tahmini: string; gercek?: string; gecikme?: boolean }> = {
+  '#TY-8842901': { tahmini: '02 Haz 2026' },
+  '#HB-5521038': { tahmini: '01 Haz 2026' },
+  '#N11-3310094': { tahmini: '31 May 2026', gecikme: true },
+  '#TY-8843212': { tahmini: '02 Haz 2026' },
+  '#HB-5521199': { tahmini: '31 May 2026', gecikme: true },
+  '#TY-8844001': { tahmini: '03 Haz 2026' },
+  '#N11-3310201': { tahmini: '03 Haz 2026' },
+  '#HB-5521300': { tahmini: '31 May 2026', gecikme: true },
+  '#TY-8844102': { tahmini: '29 May 2026', gercek: '29 May 14:32' },
+  '#N11-3310388': { tahmini: '04 Haz 2026' },
+};
+
+// Çoklu gönderiler mock data
+const COKLU: CokluRow[] = [
+  { id: '11213062228', barkod: '8880032560827500', platform: 'TY', durum: 'Yeni', ka: '2/2', urunler: ['1x Kadın Kemeri...', '1x Bel Zinciri...'], tarih: '08.05.2026 12:45',
+    detay: [{ urun: 'Gold Yılan Tokalı Kadın Kemeri...', barkod: 'FK1828STE', adet: 1 }, { urun: 'Güneş Gold Detaylı Bel Zinciri...', barkod: 'FK2450GLD', adet: 1 }] },
+  { id: '11255663978', barkod: '8880032926920135', platform: 'TY', durum: 'Yeni', yazdirildi: '21.05 12:30', yazdirildiBg: true, ka: '2/2', urunler: ['1x Köprü Toka...', '1x Köprü Toka...'], tarih: '21.05.2026 06:16',
+    detay: [{ urun: 'Köprü Toka Detaylı Kemer Siyah...', barkod: 'KP1100BLK', adet: 1 }, { urun: 'Köprü Toka Detaylı Kemer Taba...', barkod: 'KP1100TAB', adet: 1 }] },
+  { id: '11255689525', barkod: '8880032927294495', platform: 'TY', durum: 'Yeni', yazdirildi: '21.05 12:30', yazdirildiBg: true, ka: '3/4', urunler: ['1x İnce Lastikli...', '2x İnce Lastikli...'], tarih: '21.05.2026 07:36',
+    detay: [{ urun: 'İnce Lastikli Bel Kemeri Siyah...', barkod: 'IL2200BLK', adet: 1 }, { urun: 'İnce Lastikli Bel Kemeri Bej...', barkod: 'IL2200BEJ', adet: 2 }] },
+  { id: '11301445521', barkod: '8880033102445521', platform: 'HB', durum: 'İşleme Alındı', ka: '2/2', urunler: ['1x Spor Çanta...', '1x Laptop Kılıfı...'], tarih: '25.05.2026 14:22',
+    detay: [{ urun: 'Spor Çanta Su Geçirmez Siyah...', barkod: 'SC3300BLK', adet: 1 }, { urun: 'Laptop Kılıfı 15 inç...', barkod: 'LK1500GRY', adet: 1 }] },
+  { id: '11389201847', barkod: '8880033389201847', platform: 'N11', durum: 'Yeni', ka: '2/3', urunler: ['2x Bluetooth Kulaklık...'], tarih: '28.05.2026 09:11',
+    detay: [{ urun: 'Bluetooth Kulaklık Mini TWS...', barkod: 'BK4400WHT', adet: 2 }] },
+];
+
+// Ürün listesi (Trendyol'dan Çek sonrası)
+const URUN_LISTE = [
+  { sku: 'SKU-00441', ad: 'Kablosuz Kulaklık Pro X3', barkod: 'SKU00441KP', adet: 70, siparis: 68 },
+  { sku: 'SKU-00892', ad: 'Gaming Mouse + Pad Set RGB', barkod: 'SKU00892GM', adet: 12, siparis: 12 },
+  { sku: 'SKU-01123', ad: 'Deri Çanta Siyah El Çantası', barkod: 'SKU01123DC', adet: 8, siparis: 8 },
+  { sku: 'SKU-02201', ad: 'Akıllı Saat SE 2025 GPS', barkod: 'SKU02201AS', adet: 25, siparis: 24 },
+  { sku: 'SKU-02389', ad: 'Bluetooth Hoparlör Mini', barkod: 'SKU02389BH', adet: 5, siparis: 5 },
+  { sku: 'SKU-02541', ad: 'Laptop Çantası 15 inç', barkod: 'SKU02541LC', adet: 3, siparis: 3 },
+];
+
+// Adet grupları (SKU-00441 için)
+const ADET_GRUPLARI = [
+  { label: '1 Adet İçeren Siparişler', adet: 66 },
+  { label: '2 Adet İçeren Siparişler', adet: 2 },
+];
+
+// Sipariş kartları
+const SIPARIS_KARTLARI = [
+  { id: '8880032928294135', tarih: '2026-05-21', tutar: '₺166,06', adet: 1 },
+  { id: '8880032928308870', tarih: '2026-05-21', tutar: '₺181,06', adet: 1 },
+  { id: '8880032928326188', tarih: '2026-05-21', tutar: '₺181,06', adet: 1 },
+  { id: '8880032928479761', tarih: '2026-05-21', tutar: '₺181,06', adet: 1 },
+  { id: '8880032928804211', tarih: '2026-05-21', tutar: '₺166,06', adet: 1 },
+  { id: '8880032928980182', tarih: '2026-05-21', tutar: '₺181,06', adet: 1 },
+  { id: '8880032929063785', tarih: '2026-05-21', tutar: '₺181,06', adet: 1 },
+  { id: '8880032929071001', tarih: '2026-05-21', tutar: '₺166,06', adet: 1 },
+];
+
+// Ürün kataloğu
+const KATALOG_INIT: KatalogRow[] = [
+  { sku: 'SKU-00441', orijinal: 'Kablosuz Kulaklık Pro X3 Premium Ses Bluetooth 5.0 40 Saat Pil', kisa: 'Kulaklık Pro X3' },
+  { sku: 'SKU-00892', orijinal: 'Gaming Mouse + Pad Set RGB Aydınlatmalı Profesyonel 12.000 DPI', kisa: '' },
+  { sku: 'SKU-01123', orijinal: 'Deri Çanta Siyah El Çantası Omuz Kadın Şık Günlük Kullanım', kisa: 'Deri Çanta S' },
+  { sku: 'SKU-02201', orijinal: 'Akıllı Saat SE 2025 Kalp Ritmi Adım Sayar GPS Su Geçirmez', kisa: '' },
+  { sku: 'SKU-02389', orijinal: 'Bluetooth Hoparlör Mini 360° Su Geçirmez Taşınabilir 20W', kisa: '' },
+  { sku: 'SKU-02541', orijinal: 'Laptop Çantası 15 inç Su Geçirmez Notebook Sırt Çantası USB', kisa: 'Laptop Çnt 15' },
+];
+
+const RECENT_UPLOADS = [
+  { name: 'siparisler_haziran.xlsx', info: '47 sipariş · 02 Haz 2026 14:30' },
+  { name: 'siparisler_mayis.xlsx', info: '128 sipariş · 31 May 2026 09:15' },
+  { name: 'siparisler_ozel.csv', info: '12 sipariş · 28 May 2026 16:45' },
+];
+
+const todayMinus = (d: number) => {
+  const dt = new Date(2026, 5, 14 - d);
+  return dt.toISOString().slice(0, 10);
+};
+
+// ─── Small components ──────────────────────────────────────────────────────────
+function Spinner({ light = true }: { light?: boolean }) {
+  return <span style={{ display: 'inline-block', width: 14, height: 14, border: `2px solid ${light ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)'}`, borderTopColor: light ? '#fff' : '#1A1915', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />;
 }
 
-// ─── Print modal ──────────────────────────────────────────────────────────────
-function PrintModal({ orders, onClose, onConfirm }: { orders: Order[]; onClose: () => void; onConfirm: () => void }) {
-  const totalPkgs = orders.reduce((s, o) => s + o.packages, 0);
+function PlatformBadge({ p }: { p: Platform }) {
+  const s = PLATFORM_STYLE[p];
+  return <span style={{ background: s.bg, color: s.color, borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '2px 8px' }}>{s.label}</span>;
+}
+
+function StatusPill({ s }: { s: string }) {
+  const st = DURUM_STYLE[s] || { bg: '#F3F4F6', color: '#6B7280' };
+  return <span style={{ background: st.bg, color: st.color, borderRadius: 999, fontSize: 12, fontWeight: 600, padding: '3px 10px', whiteSpace: 'nowrap' }}>{s}</span>;
+}
+
+function ImgBox({ size = 48 }: { size?: number }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 32, width: 480, maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: '#1A1915' }}>Barkod Yazdır</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9E9B93' }}>×</button>
-        </div>
-        <div style={{ background: '#F7F6F2', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13 }}>
-          <span style={{ fontWeight: 600, color: '#1A1915' }}>{orders.length} sipariş</span>
-          <span style={{ color: '#9E9B93' }}> · {totalPkgs} barkod yazdırılacak</span>
-          {orders.some(o => o.printed) && <div style={{ marginTop: 6, color: '#D97706', fontWeight: 600, fontSize: 12 }}><IconText name="alert" color="#D97706" size={13}>{orders.filter(o => o.printed).length} sipariş daha önce yazdırıldı — tekrar yazdırılacak</IconText></div>}
-        </div>
-        {orders.map(order => (
-          <div key={order.id} style={{ marginBottom: 16, padding: 16, border: '1px solid rgba(26,25,21,0.1)', borderRadius: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#1A1915' }}>{order.id}</span>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                {order.printed && <span style={{ fontSize: 11, color: '#D97706', fontWeight: 600 }}>Tekrar</span>}
-                <span style={{ fontSize: 12, color: '#9E9B93' }}>{order.packages} barkod</span>
-              </div>
-            </div>
-            <BarcodeSVG />
-            <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'monospace', color: '#9E9B93', letterSpacing: 2, textAlign: 'center' }}>
-              {order.carrier.toUpperCase().substring(0,3)} {order.id.replace('#','').replace('-','')} TR 00
-            </div>
-          </div>
-        ))}
-        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid rgba(26,25,21,0.16)', background: '#F7F6F2', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#5A574F' }}>İptal</button>
-          <button onClick={onConfirm} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}><Icon name="printer" size={16} /> Yazdır ({totalPkgs} barkod)</button>
-        </div>
-      </div>
+    <div style={{ width: size, height: size, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <Icon name="image" size={size * 0.42} color="#9CA3AF" strokeWidth={1.6} />
     </div>
   );
 }
 
-// ─── Alias editor ─────────────────────────────────────────────────────────────
-function AliasCell({ productId, name, aliases, onSave }: { productId: string; name: string; aliases: Record<string, string>; onSave: (id: string, alias: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(aliases[productId] || '');
-  const alias = aliases[productId];
-  if (editing) return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <input autoFocus value={val} onChange={e => setVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') { onSave(productId, val); setEditing(false); } if (e.key === 'Escape') setEditing(false); }}
-        placeholder="kısa ad gir…"
-        style={{ fontSize: 12, padding: '3px 8px', borderRadius: 6, border: '1.5px solid #1A6B46', outline: 'none', width: 110, fontFamily: 'inherit', color: '#1A1915' }} />
-      <button onClick={() => { onSave(productId, val); setEditing(false); }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: '#1A6B46', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>✓</button>
-      <button onClick={() => setEditing(false)} style={{ fontSize: 11, padding: '3px 7px', borderRadius: 6, background: '#F7F6F2', color: '#9E9B93', border: '1px solid rgba(26,25,21,0.12)', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
-    </div>
-  );
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{ fontSize: 13, color: '#1A1915', fontWeight: 500 }}>{alias || name}</span>
-      {alias && <span style={{ fontSize: 11, color: '#9E9B93', fontStyle: 'italic' }}>(orijinal: {name.length > 20 ? name.slice(0,20)+'…' : name})</span>}
-      <button onClick={() => { setVal(aliases[productId] || ''); setEditing(true); }} title="Kısa ad tanımla"
-        style={{ padding: '3px 7px', borderRadius: 5, background: 'transparent', border: '1px solid rgba(26,25,21,0.12)', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="edit" size={13} /></button>
-    </div>
-  );
-}
-
-// ─── Spinner ──────────────────────────────────────────────────────────────────
-function Spinner() {
-  return (
-    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-  );
-}
-
-// ─── Platform sync card ───────────────────────────────────────────────────────
-function PlatformCard({ cfg, onToggle, onSync }: { cfg: PlatformConfig; onToggle: () => void; onSync: () => void }) {
-  const loading  = cfg.syncState === 'loading';
-  const success  = cfg.syncState === 'success';
-  const error    = cfg.syncState === 'error';
-
-  return (
-    <div style={{
-      border: `1.5px solid ${cfg.enabled ? cfg.color + '40' : 'rgba(26,25,21,0.1)'}`,
-      borderRadius: 12,
-      padding: '12px 14px',
-      background: cfg.enabled ? cfg.bg : '#F7F6F2',
-      opacity: cfg.enabled ? 1 : 0.55,
-      transition: 'all 0.2s',
-      minWidth: 150,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ width: 26, height: 26, borderRadius: 7, background: cfg.enabled ? cfg.color : '#D4D2CC', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, letterSpacing: '-0.3px' }}>{cfg.abbr}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: cfg.enabled ? cfg.color : '#9E9B93' }}>{cfg.label}</span>
-        </div>
-        {/* Toggle switch */}
-        <div
-          onClick={onToggle}
-          style={{ width: 32, height: 18, borderRadius: 9, background: cfg.enabled ? cfg.color : 'rgba(26,25,21,0.15)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}
-        >
-          <div style={{ position: 'absolute', top: 2, left: cfg.enabled ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-        </div>
-      </div>
-
-      {/* Status row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 11, color: '#9E9B93' }}>
-          {!cfg.enabled && 'Bağlı değil'}
-          {cfg.enabled && !cfg.lastSync && !loading && 'Hiç çekilmedi'}
-          {cfg.enabled && cfg.lastSync && !loading && !error && (
-            <span>{success && cfg.newCount > 0 ? <span style={{ color: '#1A6B46', fontWeight: 600 }}>+{cfg.newCount} yeni · </span> : null}{cfg.lastSync}</span>
-          )}
-          {cfg.enabled && loading && <span style={{ color: cfg.color, fontWeight: 600 }}>Çekiliyor…</span>}
-          {cfg.enabled && error && <span style={{ color: '#DC2626', fontWeight: 600 }}>Hata · tekrar dene</span>}
-        </div>
-        {cfg.enabled && (
-          <button
-            onClick={onSync}
-            disabled={loading}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: 'none', background: loading ? 'rgba(26,25,21,0.1)' : cfg.color, color: loading ? '#9E9B93' : '#fff', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
-          >
-            {loading ? <><Spinner /> Çekiyor</> : <><Icon name={error ? 'undo' : 'refresh'} size={13} /> {error ? 'Tekrar' : 'Çek'}</>}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Main page ─────────────────────────────────────────────────────────────────
 export default function SiparislerPage() {
-  const [orders, setOrders]           = useState<Order[]>(INITIAL_ORDERS);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [filterCarrier, setFC]        = useState('Tümü');
-  const [filterStatus, setFS]         = useState('Tümü');
-  const [filterPackage, setFP]        = useState('Tümü');
-  const [filterPrinted, setFPr]       = useState('Tümü');
-  const [filterPlatform, setFPl]      = useState('Tümü');
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [showPrintModal, setShowPrint]= useState(false);
-  const [toast, setToast]             = useState<{ msg: string; type: 'ok'|'err' } | null>(null);
-  const [aliases, setAliases]         = useState<Record<string, string>>({});
-  const [syncPanelOpen, setSyncPanel] = useState(false);
+  const router = useRouter();
+  const [mainTab, setMainTab] = useState<MainTab>('trendyol');
+  const [subTab, setSubTab] = useState<SubTab>('tekli');
+  const [view, setView] = useState<View>('tablo');
+  const [selectedUrun, setSelectedUrun] = useState<(typeof URUN_LISTE)[0] | null>(null);
+  const [selectedGrup, setSelectedGrup] = useState<(typeof ADET_GRUPLARI)[0] | null>(null);
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [accordionOpen, setAccordionOpen] = useState<string[]>([]);
+  const [showHata, setShowHata] = useState(false);
+  const [showOzelBarkod, setShowOzelBarkod] = useState(false);
+  const [cekiliyor, setCekiliyor] = useState(false);
+  const [katalog, setKatalog] = useState<KatalogRow[]>(KATALOG_INIT);
+  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
 
-  // Platform configs
-  const [platforms, setPlatforms] = useState<PlatformConfig[]>(
-    PLATFORM_DEFS.map(d => ({ ...d, syncState: 'idle', lastSync: null, newCount: 0 }))
-  );
+  // filters (inline)
+  const [fSiparis, setFSiparis] = useState('');
+  const [fMusteri, setFMusteri] = useState('');
+  const [fPlatform, setFPlatform] = useState('Tümü');
+  const [fKargo, setFKargo] = useState('');
+  const [fDurum, setFDurum] = useState('Tümü');
+  const [fYazdirma, setFYazdirma] = useState('Tümü');
+  const [arama, setArama] = useState('');
 
-  const showToast = useCallback((msg: string, type: 'ok'|'err' = 'ok') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
+  // pagination
+  const [perPage, setPerPage] = useState(50);
+
+  const toast = useCallback((msg: string) => {
+    const id = Date.now() + Math.random();
+    setToasts(t => [...t, { id, msg }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
   }, []);
 
-  // ─── Sync single platform ──────────────────────────────────────────────────
-  const syncPlatform = useCallback((platform: Platform) => {
-    setPlatforms(prev => prev.map(p => p.key === platform ? { ...p, syncState: 'loading', newCount: 0 } : p));
-
-    mockFetch(platform)
-      .then(newOrders => {
-        setOrders(prev => {
-          const existingIds = new Set(prev.map(o => o.id));
-          const truly = newOrders.filter(o => !existingIds.has(o.id));
-          return [...truly, ...prev];
-        });
-        const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        setPlatforms(prev => prev.map(p => p.key === platform
-          ? { ...p, syncState: 'success', lastSync: timeStr, newCount: newOrders.length }
-          : p
-        ));
-        showToast(`${platform}: ${newOrders.length} yeni sipariş`);
-        // Clear "isNew" highlight after 8s
-        setTimeout(() => setOrders(prev => prev.map(o => ({ ...o, isNew: false }))), 8000);
-      })
-      .catch(() => {
-        setPlatforms(prev => prev.map(p => p.key === platform ? { ...p, syncState: 'error' } : p));
-        showToast(`${platform} API hatası — tekrar dene`, 'err');
-      });
-  }, [showToast]);
-
-  // ─── Sync all enabled platforms ───────────────────────────────────────────
-  const syncAll = useCallback(() => {
-    const enabled = platforms.filter(p => p.enabled);
-    enabled.forEach(p => syncPlatform(p.key));
-  }, [platforms, syncPlatform]);
-
-  // ─── Filtering ─────────────────────────────────────────────────────────────
-  const filtered = useMemo(() => orders.filter(o => {
-    if (filterCarrier  !== 'Tümü' && o.carrier  !== filterCarrier)  return false;
-    if (filterStatus   !== 'Tümü' && o.status   !== filterStatus)   return false;
-    if (filterPlatform !== 'Tümü' && o.platform !== filterPlatform) return false;
-    if (filterPackage  === 'Tekli'  && o.packages !== 1)  return false;
-    if (filterPackage  === 'Çoklu'  && o.packages <= 1)  return false;
-    if (filterPrinted  === 'Yazdırıldı'   && !o.printed) return false;
-    if (filterPrinted  === 'Yazdırılmadı' &&  o.printed) return false;
+  // filtered tekli rows
+  const tekliFiltered = useMemo(() => TEKLI.filter(r => {
+    if (fSiparis && !(`${r.id} ${r.urun}`.toLowerCase().includes(fSiparis.toLowerCase()))) return false;
+    if (fMusteri && !r.musteri.toLowerCase().includes(fMusteri.toLowerCase())) return false;
+    if (fPlatform !== 'Tümü') {
+      const map: Record<string, Platform> = { Trendyol: 'TY', Hepsiburada: 'HB', N11: 'N11' };
+      if (r.platform !== map[fPlatform]) return false;
+    }
+    if (fKargo && !r.kargo.toLowerCase().includes(fKargo.toLowerCase())) return false;
+    if (fDurum === 'Bekliyor' && r.durum !== 'Bekliyor') return false;
+    if (fDurum === 'İşleme Alındı' && r.durum !== 'İşleme Alındı') return false;
+    if (fYazdirma === 'Yazdırıldı' && !r.yazdirildi) return false;
+    if (fYazdirma === 'Yazdırılmadı' && r.yazdirildi) return false;
+    if (arama && !(`${r.id} ${r.urun} ${r.musteri}`.toLowerCase().includes(arama.toLowerCase()))) return false;
     return true;
-  }), [orders, filterCarrier, filterStatus, filterPackage, filterPrinted, filterPlatform]);
+  }), [fSiparis, fMusteri, fPlatform, fKargo, fDurum, fYazdirma, arama]);
 
-  const selectedOrders = filtered.filter(o => selectedIds.has(o.id));
-  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
-  const someSelected = selectedIds.size > 0 && !allSelected;
+  const toggleRow = (id: string) => setSelectedRows(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const toggleAccordion = (id: string) => setAccordionOpen(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const clearSel = () => setSelectedRows([]);
 
-  function toggleSelect(id: string) {
-    setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  }
-  function toggleAll() {
-    setSelectedIds(allSelected ? new Set() : new Set(filtered.map(o => o.id)));
-  }
-  function toggleExpand(id: string) {
-    setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
-  }
-  function handlePrintConfirm() {
-    const ids = new Set(selectedOrders.map(o => o.id));
-    const ts = new Date().toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    setOrders(prev => prev.map(o => ids.has(o.id) ? { ...o, printed: true, printedAt: ts } : o));
-    const total = selectedOrders.reduce((s, o) => s + o.packages, 0);
-    showToast(`${total} barkod yazdırıldı`);
-    setSelectedIds(new Set());
-    setShowPrint(false);
-  }
-
-  const enabledCount = platforms.filter(p => p.enabled).length;
-  const anyLoading   = platforms.some(p => p.syncState === 'loading');
-
-  const selectStyle: React.CSSProperties = {
-    padding: '8px 12px', borderRadius: 8, border: '1.5px solid rgba(26,25,21,0.16)',
-    background: '#fff', fontSize: 13, fontFamily: 'inherit', color: '#1A1915', cursor: 'pointer', outline: 'none', fontWeight: 500,
+  const handleCek = () => {
+    setCekiliyor(true);
+    setTimeout(() => {
+      setCekiliyor(false);
+      setView('urun-listesi');
+      toast('47 sipariş çekildi');
+    }, 1500);
   };
-  const activePlatforms = platforms.filter(p => p.enabled).map(p => p.key as string);
+
+  const fontFamily = "'Plus Jakarta Sans', sans-serif";
+
+  // shared styles
+  const card: React.CSSProperties = { background: '#fff', borderRadius: 14, border: '1px solid #EFEDE8', boxShadow: '0 1px 6px rgba(26,25,21,0.04)' };
+  const inputSm: React.CSSProperties = { fontSize: 12, padding: '6px 8px', borderRadius: 6, border: '1px solid #E5E7EB', outline: 'none', fontFamily, width: '100%', boxSizing: 'border-box' };
+  const selSm: React.CSSProperties = { ...inputSm, cursor: 'pointer', background: '#fff' };
+  const actionBtn = (bg: string, disabled = false): React.CSSProperties => ({
+    padding: '8px 14px', borderRadius: 8, border: 'none', background: disabled ? 'rgba(26,25,21,0.12)' : bg,
+    color: disabled ? '#9E9B93' : '#fff', fontSize: 13, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily, display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+  });
+
+  const hasSel = selectedRows.length > 0;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Plus Jakarta Sans', sans-serif", background: '#F7F6F2' }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes fadeSlideIn { from { opacity:0;transform:translateY(-6px) } to { opacity:1;transform:translateY(0) } }`}</style>
+    <div style={{ display: 'flex', minHeight: '100vh', fontFamily, background: '#F7F6F2' }}>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes slideDown { from { opacity:0; transform: translateY(-8px) } to { opacity:1; transform: translateY(0) } }
+        @keyframes modalIn { from { opacity:0; transform: scale(0.96) } to { opacity:1; transform: scale(1) } }
+        .acc { overflow: hidden; transition: max-height 0.3s ease; }
+      `}</style>
       <Sidebar />
-
       <TopBar title="Siparişler" />
-      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px' }}>
 
-        {/* ── Header row ────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915' }}>Siparişler</h1>
-            <p style={{ fontSize: 13, color: '#9E9B93', marginTop: 4 }}>
-              {orders.length} sipariş · {orders.filter(o => o.status === 'Bekliyor').length} bekliyor
-            </p>
-          </div>
+      <main style={{ marginLeft: 240, flex: 1, padding: '88px 36px 32px', minWidth: 0 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1915', marginBottom: 16 }}>Siparişler</h1>
 
-          {/* Sync button group */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              onClick={() => setSyncPanel(v => !v)}
-              style={{ padding: '9px 14px', borderRadius: 9, border: '1.5px solid rgba(26,25,21,0.16)', background: syncPanelOpen ? '#1A1915' : '#fff', color: syncPanelOpen ? '#fff' : '#1A1915', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <Icon name="integrations" size={15} /> Platformlar {enabledCount > 0 && <span style={{ background: syncPanelOpen ? 'rgba(255,255,255,0.2)' : '#1A6B46', color: '#fff', borderRadius: 999, fontSize: 11, padding: '1px 7px', fontWeight: 700 }}>{enabledCount}</span>}
-            </button>
-            <button
-              onClick={syncAll}
-              disabled={enabledCount === 0 || anyLoading}
-              style={{ padding: '9px 18px', borderRadius: 9, border: 'none', background: enabledCount === 0 || anyLoading ? 'rgba(26,25,21,0.12)' : '#1A6B46', color: enabledCount === 0 || anyLoading ? '#9E9B93' : '#fff', fontSize: 13, fontWeight: 700, cursor: enabledCount === 0 || anyLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7 }}
-            >
-              {anyLoading ? <><Spinner /> Güncelleniyor…</> : <><Icon name="refresh" size={15} /> Tümünü Güncelle</>}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Platform sync panel ────────────────────────────────────────── */}
-        {syncPanelOpen && (
-          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(26,25,21,0.1)', padding: '20px 20px 16px', marginBottom: 20, animation: 'fadeSlideIn 0.2s ease' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#1A1915' }}>Platform Bağlantıları</span>
-                <span style={{ fontSize: 12, color: '#9E9B93', marginLeft: 10 }}>Aktif platformlardan siparişleri çek</span>
-              </div>
-              <button
-                onClick={syncAll}
-                disabled={enabledCount === 0 || anyLoading}
-                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: enabledCount === 0 || anyLoading ? 'rgba(26,25,21,0.1)' : '#1A1915', color: enabledCount === 0 || anyLoading ? '#9E9B93' : '#fff', fontSize: 13, fontWeight: 700, cursor: enabledCount === 0 || anyLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                {anyLoading ? <><Spinner /> Güncelleniyor</> : <><Icon name="refresh" size={15} /> {enabledCount} Platformu Güncelle</>}
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-              {platforms.map(cfg => (
-                <PlatformCard
-                  key={cfg.key}
-                  cfg={cfg}
-                  onToggle={() => setPlatforms(prev => prev.map(p => p.key === cfg.key ? { ...p, enabled: !p.enabled } : p))}
-                  onSync={() => syncPlatform(cfg.key)}
-                />
-              ))}
-            </div>
-            <div style={{ marginTop: 12, fontSize: 11, color: '#9E9B93' }}>
-              💡 Açık/kapalı toggle ile hangi platformların aktif olacağını seç. &quot;Tümünü Güncelle&quot; sadece açık platformları çeker.
-            </div>
-          </div>
-        )}
-
-        {/* ── Filter bar ─────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#9E9B93' }}>Platform</span>
-            <select value={filterPlatform} onChange={e => setFPl(e.target.value)} style={selectStyle}>
-              <option>Tümü</option>
-              {activePlatforms.map(p => <option key={p}>{p}</option>)}
-              {/* also include platforms that have orders but are now toggled off */}
-              {Array.from(new Set(orders.map(o => o.platform))).filter(p => !activePlatforms.includes(p)).map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#9E9B93' }}>Kargo</span>
-            <select value={filterCarrier} onChange={e => setFC(e.target.value)} style={selectStyle}>
-              <option>Tümü</option>
-              {CARRIERS.map(c => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#9E9B93' }}>Durum</span>
-            <select value={filterStatus} onChange={e => setFS(e.target.value)} style={selectStyle}>
-              <option>Tümü</option>
-              {(['Bekliyor','Kargoda','Teslim Edildi','İade'] as Status[]).map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#9E9B93' }}>Paket</span>
-            <select value={filterPackage} onChange={e => setFP(e.target.value)} style={selectStyle}>
-              <option>Tümü</option><option>Tekli</option><option>Çoklu</option>
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#9E9B93' }}>Barkod</span>
-            <select value={filterPrinted} onChange={e => setFPr(e.target.value)} style={selectStyle}>
-              <option>Tümü</option><option>Yazdırıldı</option><option>Yazdırılmadı</option>
-            </select>
-          </div>
-          {(filterCarrier !== 'Tümü' || filterStatus !== 'Tümü' || filterPackage !== 'Tümü' || filterPrinted !== 'Tümü' || filterPlatform !== 'Tümü') && (
-            <button onClick={() => { setFC('Tümü'); setFS('Tümü'); setFP('Tümü'); setFPr('Tümü'); setFPl('Tümü'); }}
-              style={{ padding: '8px 12px', borderRadius: 8, border: '1.5px solid rgba(220,38,38,0.3)', background: '#FEE2E2', color: '#DC2626', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Filtreleri Temizle ×
-            </button>
-          )}
-          <div style={{ marginLeft: 'auto', fontSize: 13, color: '#9E9B93' }}>{filtered.length} sonuç</div>
-        </div>
-
-        {/* ── Action bar (selection) ─────────────────────────────────────── */}
-        {selectedIds.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#1A1915', borderRadius: 12, marginBottom: 12 }}>
-            <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>{selectedIds.size} sipariş seçildi</span>
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>· {selectedOrders.reduce((s, o) => s + o.packages, 0)} barkod</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <button onClick={() => setSelectedIds(new Set())} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Seçimi Kaldır</button>
-              <button onClick={() => setShowPrint(true)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#1A6B46', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name="printer" size={15} /> Barkod Yazdır</button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Orders table ───────────────────────────────────────────────── */}
-        <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 8px rgba(26,25,21,0.06)', border: '1px solid rgba(26,25,21,0.08)', overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '40px 1fr 140px 110px 80px 80px 100px 50px', padding: '10px 16px', borderBottom: '1px solid rgba(26,25,21,0.08)', background: '#F7F6F2' }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected; }} onChange={toggleAll} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#1A6B46' }} />
-            </div>
-            {['Sipariş / Ürünler','Müşteri','Platform','Kargo','Paket','Durum',''].map((h, i) => (
-              <div key={i} style={{ fontSize: 11, fontWeight: 700, color: '#9E9B93', letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>{h}</div>
-            ))}
-          </div>
-
-          {filtered.length === 0 && <div style={{ padding: '48px', textAlign: 'center', color: '#9E9B93', fontSize: 14 }}>Bu filtreyle eşleşen sipariş bulunamadı.</div>}
-
-          {filtered.map((order, idx) => {
-            const expanded = expandedIds.has(order.id);
-            const selected = selectedIds.has(order.id);
-            const ss = STATUS_STYLE[order.status];
-            const pd = PLATFORM_DEFS.find(p => p.key === order.platform)!;
-            const firstProduct = order.products[0];
+        {/* ── Ana sekmeler ─────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 28, borderBottom: '1px solid #E5E7EB', marginBottom: 20 }}>
+          {([
+            { key: 'manuel' as MainTab, label: 'Manuel / Excel Yükle', icon: 'upload' as IconName },
+            { key: 'trendyol' as MainTab, label: 'Trendyol', icon: 'store' as IconName },
+          ]).map(t => {
+            const active = mainTab === t.key;
             return (
-              <div key={order.id} style={{ borderBottom: idx < filtered.length - 1 ? '1px solid rgba(26,25,21,0.06)' : 'none', background: order.isNew ? 'rgba(26,107,70,0.06)' : selected ? 'rgba(26,107,70,0.03)' : '#fff', transition: 'background 1s' }}>
-                <div
-                  style={{ display: 'grid', gridTemplateColumns: '40px 1fr 140px 110px 80px 80px 100px 50px', padding: '13px 16px', alignItems: 'center', cursor: 'pointer' }}
-                  onClick={() => toggleSelect(order.id)}
-                >
-                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
-                    <input type="checkbox" checked={selected} onChange={() => toggleSelect(order.id)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#1A6B46' }} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <img src={firstProduct.image} alt={firstProduct.name} width={40} height={40}
-                        style={{ borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(26,25,21,0.08)', display: 'block' }}
-                        onError={e => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${firstProduct.id}/64/64`; }} />
-                      {order.isNew && <span style={{ position: 'absolute', top: -4, right: -4, width: 10, height: 10, background: '#1A6B46', borderRadius: '50%', border: '2px solid #fff' }} />}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#1A1915' }}>{order.id}</div>
-                      <div style={{ fontSize: 12, color: '#9E9B93', marginTop: 2 }}>
-                        {(aliases[firstProduct.id] || firstProduct.name).slice(0,28)}{(aliases[firstProduct.id] || firstProduct.name).length > 28 ? '…' : ''}
-                        {order.products.length > 1 && <span style={{ marginLeft: 5, color: '#1A6B46', fontWeight: 600 }}>+{order.products.length - 1}</span>}
-                        {order.isNew && <span style={{ marginLeft: 6, fontSize: 10, background: '#1A6B46', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>YENİ</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 13, color: '#1A1915' }}>{order.customer}</div>
-                  <div>
-                    {pd && <span style={{ background: pd.bg, color: pd.color, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999 }}>{pd.abbr || pd.label}</span>}
-                  </div>
-                  <div style={{ fontSize: 13, color: '#5A574F', fontWeight: 500 }}>{order.carrier}</div>
-                  <div>
-                    <span style={{ background: order.packages > 1 ? '#EBF0F9' : '#F7F6F2', color: order.packages > 1 ? '#1A4B8C' : '#9E9B93', fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 999 }}>
-                      {order.packages > 1 ? `${order.packages}p` : '1p'}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={{ background: ss.bg, color: ss.color, fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap' }}>{order.status}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                    {order.printed ? (
-                      <>
-                        <span title={`Yazdırıldı: ${order.printedAt}`} style={{ display: 'inline-flex', color: '#1A6B46' }}><Icon name="check-circle" size={17} /></span>
-                        <button onClick={() => { setSelectedIds(new Set([order.id])); setShowPrint(true); }} title="Tekrar yazdır"
-                          style={{ padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(26,25,21,0.14)', background: '#F7F6F2', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="undo" size={13} /></button>
-                      </>
-                    ) : (
-                      <button onClick={() => { setSelectedIds(new Set([order.id])); setShowPrint(true); }} title="Barkod yazdır"
-                        style={{ padding: '5px 9px', borderRadius: 6, border: 'none', background: '#1A1915', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center' }}><Icon name="printer" size={14} /></button>
-                    )}
-                    <button onClick={() => toggleExpand(order.id)}
-                      style={{ fontSize: 14, padding: '3px 6px', borderRadius: 6, border: '1px solid rgba(26,25,21,0.12)', background: 'transparent', color: '#9E9B93', cursor: 'pointer', fontFamily: 'inherit', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</button>
-                  </div>
-                </div>
-
-                {expanded && (
-                  <div style={{ padding: '0 16px 16px 56px', borderTop: '1px dashed rgba(26,25,21,0.08)', background: 'rgba(26,107,70,0.02)' }}>
-                    <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {order.printed && <div style={{ fontSize: 12, color: '#D97706', fontWeight: 600, marginBottom: 2 }}><IconText name="alert" color="#D97706" size={13}>Barkod daha önce yazdırıldı — {order.printedAt}</IconText></div>}
-                      {order.products.map(prod => (
-                        <div key={prod.id + order.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', borderRadius: 10, border: '1px solid rgba(26,25,21,0.08)' }}>
-                          <img src={prod.image} alt={prod.name} width={48} height={48}
-                            style={{ borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(26,25,21,0.08)', flexShrink: 0 }}
-                            onError={e => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${prod.id}/64/64`; }} />
-                          <div style={{ flex: 1 }}>
-                            <AliasCell productId={prod.id} name={prod.name} aliases={aliases} onSave={(id, val) => setAliases(prev => ({ ...prev, [id]: val.trim() }))} />
-                            <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
-                              <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#9E9B93' }}>{prod.sku}</span>
-                              <span style={{ fontSize: 11, color: '#9E9B93' }}>× {prod.qty} adet</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {order.packages > 1 && (
-                        <div style={{ padding: '8px 14px', background: '#EBF0F9', borderRadius: 8, fontSize: 12, color: '#1A4B8C', fontWeight: 600 }}>
-                          <IconText name="stock" color="#1A4B8C" size={14}>Bu sipariş {order.packages} ayrı pakete bölünmüş — {order.packages} barkod yazdırılacak</IconText>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button key={t.key} onClick={() => { setMainTab(t.key); setView('tablo'); }}
+                style={{ background: 'none', border: 'none', borderBottom: active ? '2px solid #1A1915' : '2px solid transparent', padding: '0 0 12px', marginBottom: -1, cursor: 'pointer', fontFamily, fontSize: 15, fontWeight: active ? 700 : 500, color: active ? '#1A1915' : '#9E9B93', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Icon name={t.icon} size={17} color={active ? '#1A1915' : '#9E9B93'} /> {t.label}
+              </button>
             );
           })}
         </div>
 
-        {/* ── Footer summary ─────────────────────────────────────────────── */}
-        {filtered.length > 0 && (
-          <div style={{ marginTop: 12, padding: '10px 16px', display: 'flex', gap: 20, fontSize: 12, color: '#9E9B93', alignItems: 'center' }}>
-            <IconText name="printer" color="#9E9B93" size={14}>Yazdırıldı: <b style={{ color: '#1A1915', marginLeft: 2 }}>{filtered.filter(o => o.printed).length}</b></IconText>
-            <IconText name="clock" color="#D97706" size={14}>Bekleyen: <b style={{ color: '#D97706', marginLeft: 2 }}>{filtered.filter(o => !o.printed).length}</b></IconText>
-            <IconText name="stock" color="#9E9B93" size={14}>Toplam paket: <b style={{ color: '#1A1915', marginLeft: 2 }}>{filtered.reduce((s, o) => s + o.packages, 0)}</b></IconText>
-          </div>
+        {mainTab === 'manuel' && <ManuelTab toast={toast} card={card} fontFamily={fontFamily} />}
+
+        {mainTab === 'trendyol' && (
+          <>
+            {/* ── Alt sekmeler ─────────────────────────────────────── */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+              {([
+                { key: 'tekli' as SubTab, label: 'Tekli Gönderiler' },
+                { key: 'coklu' as SubTab, label: 'Çoklu Gönderiler' },
+                { key: 'teslimat' as SubTab, label: 'Teslimat Listesi' },
+                { key: 'katalog' as SubTab, label: 'Ürün Kataloğu' },
+              ]).map(t => {
+                const active = subTab === t.key;
+                return (
+                  <button key={t.key} onClick={() => { setSubTab(t.key); setView('tablo'); clearSel(); }}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily, fontSize: 13, fontWeight: active ? 700 : 500, background: active ? '#1A1915' : 'transparent', color: active ? '#fff' : '#9E9B93' }}>
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Katalog tab has its own banner; others share filter card */}
+            {subTab === 'katalog' ? (
+              <KatalogTab katalog={katalog} setKatalog={setKatalog} toast={toast} card={card} fontFamily={fontFamily} />
+            ) : view !== 'tablo' && subTab === 'tekli' ? (
+              <ProductFlow
+                view={view} setView={setView}
+                selectedUrun={selectedUrun} setSelectedUrun={setSelectedUrun}
+                selectedGrup={selectedGrup} setSelectedGrup={setSelectedGrup}
+                toast={toast} card={card} fontFamily={fontFamily}
+              />
+            ) : (
+              <>
+                {/* ── Filtre kartı ─────────────────────────────────── */}
+                <div style={{ ...card, padding: '16px 20px', marginBottom: 16 }}>
+                  {/* Satır 1 */}
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                    <select defaultValue="Sendeo" style={{ ...selSm, width: 160 }}>
+                      {KARGOLAR.map(k => <option key={k}>{k}</option>)}
+                    </select>
+                    <select defaultValue="Yeni Siparişler" style={{ ...selSm, width: 180 }}>
+                      <option>Yeni Siparişler</option><option>İşleme Alındı</option><option>Faturalandı</option><option>Tümü</option>
+                    </select>
+                    <input type="date" defaultValue={todayMinus(1)} style={{ ...inputSm, width: 150 }} />
+                    <span style={{ color: '#9E9B93' }}>—</span>
+                    <input type="date" defaultValue={todayMinus(0)} style={{ ...inputSm, width: 150 }} />
+                    <button onClick={handleCek} disabled={cekiliyor}
+                      style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: cekiliyor ? 'wait' : 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {cekiliyor ? <><Spinner /> Çekiliyor...</> : <><Icon name="download" size={16} /> Trendyol&apos;dan Çek</>}
+                    </button>
+                  </div>
+                  {/* Satır 2 */}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <input value={arama} onChange={e => setArama(e.target.value)} placeholder="Ürün adı / barkod / sipariş no ara..."
+                      style={{ flex: 1, fontSize: 14, padding: '9px 16px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#F7F6F2', outline: 'none', fontFamily }} />
+                    <button onClick={() => toast('Sonuçlar getirildi')} style={actionBtn('#F59E0B')}>Getir</button>
+                    <button onClick={() => hasSel && toast(`${selectedRows.length} sipariş işleme alındı`)} disabled={!hasSel}
+                      style={{ ...actionBtn('#6366F1', !hasSel), opacity: hasSel ? 1 : 0.5 }}>İşleme Al</button>
+                    <button onClick={() => hasSel && toast(`${selectedRows.length} barkod kuyruğa alındı`)} disabled={!hasSel}
+                      style={{ ...actionBtn('#22C55E', !hasSel), opacity: hasSel ? 1 : 0.5 }}><Icon name="printer" size={15} /> Yazdır</button>
+                    <button onClick={() => setShowOzelBarkod(true)} style={actionBtn('#A78BFA')}><Icon name="plus" size={15} /> Özel Barkod</button>
+                  </div>
+                </div>
+
+                {/* ── Toplu işlem banner ───────────────────────────── */}
+                {hasSel && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 12, marginBottom: 12, animation: 'slideDown 0.2s ease' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>{selectedRows.length} sipariş seçildi</span>
+                    <button onClick={() => toast(`${selectedRows.length} sipariş işleme alındı`)} style={{ ...actionBtn('#6366F1'), padding: '6px 12px' }}>İşleme Al</button>
+                    <button onClick={() => toast(`${selectedRows.length} barkod kuyruğa alındı`)} style={{ ...actionBtn('#22C55E'), padding: '6px 12px' }}>Yazdır</button>
+                    <button onClick={() => setShowHata(true)} style={{ ...actionBtn('#EF4444'), padding: '6px 12px' }}>İptal</button>
+                    <button onClick={clearSel} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#92400E', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily, textDecoration: 'underline' }}>Seçimi Temizle</button>
+                  </div>
+                )}
+
+                {/* ── Tablolar ─────────────────────────────────────── */}
+                {subTab === 'tekli' && (
+                  <TekliTable rows={tekliFiltered} selectedRows={selectedRows} toggleRow={toggleRow}
+                    allRows={tekliFiltered.map(r => r.id)} setSelectedRows={setSelectedRows}
+                    fSiparis={fSiparis} setFSiparis={setFSiparis} fMusteri={fMusteri} setFMusteri={setFMusteri}
+                    fPlatform={fPlatform} setFPlatform={setFPlatform} fKargo={fKargo} setFKargo={setFKargo}
+                    fDurum={fDurum} setFDurum={setFDurum} fYazdirma={fYazdirma} setFYazdirma={setFYazdirma}
+                    inputSm={inputSm} selSm={selSm} toast={toast} router={router} />
+                )}
+                {subTab === 'coklu' && (
+                  <CokluTable selectedRows={selectedRows} toggleRow={toggleRow} accordionOpen={accordionOpen} toggleAccordion={toggleAccordion} toast={toast} />
+                )}
+                {subTab === 'teslimat' && (
+                  <TeslimatTable rows={tekliFiltered} selectedRows={selectedRows} toggleRow={toggleRow}
+                    allRows={tekliFiltered.map(r => r.id)} setSelectedRows={setSelectedRows} router={router} toast={toast} />
+                )}
+
+                {/* ── Sayfalama ────────────────────────────────────── */}
+                <Pagination perPage={perPage} setPerPage={setPerPage} total={tekliFiltered.length} fontFamily={fontFamily} />
+              </>
+            )}
+          </>
         )}
       </main>
 
-      {showPrintModal && selectedOrders.length > 0 && (
-        <PrintModal orders={selectedOrders} onClose={() => setShowPrint(false)} onConfirm={handlePrintConfirm} />
-      )}
-
-      {toast && (
-        <div style={{ position: 'fixed', bottom: 28, right: 28, background: toast.type === 'err' ? '#DC2626' : '#1A1915', color: '#fff', borderRadius: 12, padding: '14px 20px', fontSize: 14, fontWeight: 600, boxShadow: '0 8px 32px rgba(26,25,21,0.2)', zIndex: 200, animation: 'fadeSlideIn 0.3s ease' }}>
-          {toast.msg}
+      {/* ── Özel Barkod Modal ─────────────────────────────────────── */}
+      {showOzelBarkod && (
+        <div onClick={() => setShowOzelBarkod(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, padding: 28, width: 480, animation: 'modalIn 0.2s ease', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1A1915' }}>Özel Barkod Oluştur</h2>
+              <button onClick={() => setShowOzelBarkod(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B93', display: 'flex' }}><Icon name="x" size={20} /></button>
+            </div>
+            {[['Sipariş No', 'text'], ['Ürün Adı', 'text'], ['Adet', 'number']].map(([lbl, type]) => (
+              <div key={lbl} style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#5A574F', display: 'block', marginBottom: 6 }}>{lbl}</label>
+                <input type={type} defaultValue={type === 'number' ? 1 : ''} style={{ width: '100%', fontSize: 14, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily, boxSizing: 'border-box' }} />
+              </div>
+            ))}
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#5A574F', display: 'block', marginBottom: 6 }}>Kargo Firması</label>
+              <select defaultValue="Sendeo" style={{ width: '100%', fontSize: 14, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily, background: '#fff' }}>
+                {KARGOLAR.map(k => <option key={k}>{k}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowOzelBarkod(false)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#5A574F' }}>İptal</button>
+              <button onClick={() => { setShowOzelBarkod(false); toast('Özel barkod oluşturuldu'); }} style={{ flex: 1, padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily }}>Barkod Oluştur</button>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* ── Hata Modal ────────────────────────────────────────────── */}
+      {showHata && (
+        <div onClick={() => setShowHata(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, padding: 32, width: 440, textAlign: 'center', animation: 'modalIn 0.2s ease', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+            <div style={{ width: 60, height: 60, borderRadius: '50%', border: '2.5px solid #DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Icon name="x" size={30} color="#DC2626" strokeWidth={2.5} />
+            </div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: '#1A1915', marginBottom: 8 }}>Hata</h2>
+            <p style={{ fontSize: 14, color: '#9E9B93', marginBottom: 18 }}>Hiçbir barkod oluşturulamadı.</p>
+            <div style={{ textAlign: 'left', background: '#F7F6F2', borderRadius: 10, padding: '14px 16px', marginBottom: 22 }}>
+              <div style={{ fontSize: 13, color: '#6366F1', lineHeight: 1.5 }}>
+                • <b>{selectedRows[0] || '#TY-8844001'}</b> Sendeo&apos;dan barkod alınamadı.<br />
+                <span style={{ color: '#9E9B93', fontSize: 12 }}>(İş emri gönderiye dönüştüğü için işlem gerçekleştirilemez.)</span>
+              </div>
+            </div>
+            <button onClick={() => setShowHata(false)} style={{ padding: '10px 40px', borderRadius: 10, border: 'none', background: '#6366F1', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily }}>OK</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toasts ────────────────────────────────────────────────── */}
+      <div style={{ position: 'fixed', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 10, zIndex: 200 }}>
+        {toasts.map(t => (
+          <div key={t.id} style={{ background: '#1A1915', color: '#fff', borderRadius: 12, padding: '13px 18px', fontSize: 14, fontWeight: 600, boxShadow: '0 8px 32px rgba(26,25,21,0.25)', display: 'flex', alignItems: 'center', gap: 8, animation: 'slideDown 0.25s ease' }}>
+            <Icon name="check-circle" size={17} color="#34D399" /> {t.msg}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tekli table ────────────────────────────────────────────────────────────
+const COLS_TEKLI = '36px 56px 1.6fr 1fr 70px 90px 110px 130px 50px 90px';
+function TekliTable(props: {
+  rows: Row[]; selectedRows: string[]; toggleRow: (id: string) => void; allRows: string[]; setSelectedRows: (v: string[]) => void;
+  fSiparis: string; setFSiparis: (v: string) => void; fMusteri: string; setFMusteri: (v: string) => void;
+  fPlatform: string; setFPlatform: (v: string) => void; fKargo: string; setFKargo: (v: string) => void;
+  fDurum: string; setFDurum: (v: string) => void; fYazdirma: string; setFYazdirma: (v: string) => void;
+  inputSm: React.CSSProperties; selSm: React.CSSProperties; toast: (m: string) => void; router: ReturnType<typeof useRouter>;
+}) {
+  const { rows, selectedRows, toggleRow, allRows, setSelectedRows, inputSm, selSm, toast, router } = props;
+  const allSel = allRows.length > 0 && allRows.every(id => selectedRows.includes(id));
+  const head = ['', 'GÖRSEL', 'SİPARİŞ / ÜRÜNLER', 'MÜŞTERİ', 'PLATFORM', 'KARGO', 'SİSTEM DURUMU', 'YAZDIRMA', 'K/A', 'TESLİMAT'];
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EFEDE8', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: COLS_TEKLI, padding: '10px 16px', borderBottom: '1px solid #F3F4F6', alignItems: 'center' }}>
+        <input type="checkbox" checked={allSel} onChange={() => setSelectedRows(allSel ? [] : allRows)} style={{ width: 16, height: 16, accentColor: '#1A6B46', cursor: 'pointer' }} />
+        {head.slice(1).map((h, i) => <div key={i} style={{ fontSize: 11, fontWeight: 600, color: '#9E9B93', textTransform: 'uppercase' }}>{h}</div>)}
+      </div>
+      {/* inline filter row */}
+      <div style={{ display: 'grid', gridTemplateColumns: COLS_TEKLI, padding: '8px 16px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', alignItems: 'center', gap: 6 }}>
+        <span /><span />
+        <input value={props.fSiparis} onChange={e => props.setFSiparis(e.target.value)} placeholder="Ara..." style={inputSm} />
+        <input value={props.fMusteri} onChange={e => props.setFMusteri(e.target.value)} placeholder="Ara..." style={inputSm} />
+        <select value={props.fPlatform} onChange={e => props.setFPlatform(e.target.value)} style={selSm}><option>Tümü</option><option>Trendyol</option><option>Hepsiburada</option><option>N11</option></select>
+        <input value={props.fKargo} onChange={e => props.setFKargo(e.target.value)} placeholder="Ara..." style={inputSm} />
+        <select value={props.fDurum} onChange={e => props.setFDurum(e.target.value)} style={selSm}><option>Tümü</option><option>Bekliyor</option><option>İşleme Alındı</option></select>
+        <select value={props.fYazdirma} onChange={e => props.setFYazdirma(e.target.value)} style={selSm}><option>Tümü</option><option>Yazdırıldı</option><option>Yazdırılmadı</option></select>
+        <span /><span />
+      </div>
+
+      {rows.length === 0 && <div style={{ padding: 48, textAlign: 'center', color: '#9E9B93', fontSize: 14 }}>Eşleşen sipariş bulunamadı.</div>}
+      {rows.map((r, idx) => {
+        const sel = selectedRows.includes(r.id);
+        const bg = sel ? '#EBF5EF' : r.iade ? '#FEF2F2' : r.yazdirildi ? '#F0FDF4' : '#fff';
+        return (
+          <div key={r.id} onClick={() => toggleRow(r.id)}
+            style={{ display: 'grid', gridTemplateColumns: COLS_TEKLI, padding: '14px 16px', alignItems: 'center', cursor: 'pointer', background: bg, borderBottom: idx < rows.length - 1 ? '1px solid #F3F4F6' : 'none', borderLeft: sel ? '3px solid #1A6B46' : '3px solid transparent', transition: 'background 0.15s' }}>
+            <input type="checkbox" checked={sel} onChange={() => toggleRow(r.id)} onClick={e => e.stopPropagation()} style={{ width: 16, height: 16, accentColor: '#1A6B46', cursor: 'pointer' }} />
+            <ImgBox />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1915' }}>{r.id}</div>
+              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{r.urun}{r.ekstra ? <span style={{ marginLeft: 6, background: '#DBEAFE', color: '#1D4ED8', borderRadius: 999, fontSize: 10, fontWeight: 700, padding: '1px 6px' }}>+{r.ekstra}</span> : null}</div>
+            </div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.musteri}</div>
+            <div><PlatformBadge p={r.platform} /></div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.kargo}</div>
+            <div><StatusPill s={r.durum} /></div>
+            <div style={{ fontSize: 12 }}>
+              {r.yazdirildi
+                ? <span style={{ color: '#16A34A', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="check" size={13} color="#16A34A" /> {r.yazdirildi}</span>
+                : <span style={{ color: '#9E9B93' }}>Yazdırılmadı</span>}
+            </div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.ka}</div>
+            <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {r.yazdirildi ? (
+                <>
+                  <button title="Yazdırıldı" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #1A1915', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={15} color="#1A1915" /></button>
+                  <button title="İade başlat" onClick={() => router.push('/iade')} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="undo" size={15} color="#6B7280" /></button>
+                </>
+              ) : (
+                <>
+                  <button title="Barkod yazdır" onClick={() => toast('Barkod yazdırılıyor...')} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#1A1915', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="printer" size={15} color="#fff" /></button>
+                  <button title="İşlemler" onClick={() => toast('İşleme alındı')} style={{ width: 24, height: 32, borderRadius: 8, border: 'none', background: '#1A1915', borderLeft: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="chevron-down" size={14} color="#fff" /></button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Çoklu table ────────────────────────────────────────────────────────────
+const COLS_COKLU = '36px 70px 90px 1.4fr 70px 120px 130px 50px 1.4fr 130px';
+function CokluTable({ selectedRows, toggleRow, accordionOpen, toggleAccordion, toast }: {
+  selectedRows: string[]; toggleRow: (id: string) => void; accordionOpen: string[]; toggleAccordion: (id: string) => void; toast: (m: string) => void;
+}) {
+  const head = ['', 'İŞLEM', 'GÖRSELLER', 'SİPARİŞ / KARGO', 'PLATFORM', 'SİSTEM DURUMU', 'YAZDIRMA', 'K/A', 'ÜRÜNLER', 'SİPARİŞ TARİHİ'];
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EFEDE8', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: COLS_COKLU, padding: '10px 16px', borderBottom: '1px solid #F3F4F6', alignItems: 'center' }}>
+        <span />
+        {head.slice(1).map((h, i) => <div key={i} style={{ fontSize: 11, fontWeight: 600, color: '#9E9B93', textTransform: 'uppercase' }}>{h}</div>)}
+      </div>
+      {COKLU.map((r, idx) => {
+        const sel = selectedRows.includes(r.id);
+        const open = accordionOpen.includes(r.id);
+        const bg = sel ? '#EBF5EF' : r.yazdirildiBg ? '#F0FDF4' : '#fff';
+        return (
+          <div key={r.id} style={{ borderBottom: idx < COKLU.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: COLS_COKLU, padding: '14px 16px', alignItems: 'center', background: bg, borderLeft: sel ? '3px solid #1A6B46' : '3px solid transparent' }}>
+              <input type="checkbox" checked={sel} onChange={() => toggleRow(r.id)} style={{ width: 16, height: 16, accentColor: '#1A6B46', cursor: 'pointer' }} />
+              <div style={{ display: 'flex', gap: 5 }}>
+                <button title="İşleme al" onClick={() => toast('İşleme alındı')} style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: '#6366F1', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={14} color="#fff" /></button>
+                <button title="Detay" onClick={() => toggleAccordion(r.id)} style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: '#3B82F6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="plus" size={14} color="#fff" /></button>
+              </div>
+              <div style={{ display: 'flex', gap: 3 }}>{Array.from({ length: Math.min(3, r.detay.length + 1) }).map((_, i) => <ImgBox key={i} size={32} />)}</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1A1915' }}>{r.id}</div>
+                <div style={{ fontSize: 11, color: r.yazdirildiBg ? '#16A34A' : '#9E9B93', fontFamily: 'monospace', marginTop: 2 }}>{r.barkod}</div>
+              </div>
+              <div><PlatformBadge p={r.platform} /></div>
+              <div><StatusPill s={r.durum} /></div>
+              <div style={{ fontSize: 12 }}>
+                {r.yazdirildi
+                  ? <span style={{ color: '#16A34A' }}><Icon name="check" size={12} color="#16A34A" /> Yazdırıldı<br /><span style={{ fontSize: 11 }}>{r.yazdirildi}</span></span>
+                  : <span style={{ color: '#9E9B93' }}>Yazdırılmadı</span>}
+              </div>
+              <div style={{ fontSize: 13, color: '#1A1915' }}>{r.ka}</div>
+              <div style={{ fontSize: 12, color: '#7C3AED' }}>{r.urunler.map((u, i) => <div key={i}>{u}</div>)}</div>
+              <div style={{ fontSize: 12, color: r.yazdirildiBg ? '#16A34A' : '#9E9B93', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="clock" size={13} color={r.yazdirildiBg ? '#16A34A' : '#9E9B93'} /> {r.tarih}</div>
+            </div>
+            <div className="acc" style={{ maxHeight: open ? 400 : 0 }}>
+              <div style={{ padding: '4px 16px 16px 122px', background: '#F9FAFB' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+                  <thead><tr style={{ background: '#F3F4F6' }}>
+                    {['ÜRÜN', 'BARKOD', 'ADET'].map(h => <th key={h} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#9E9B93', padding: '8px 12px' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {r.detay.map((d, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid #F3F4F6' }}>
+                        <td style={{ fontSize: 13, color: '#1A1915', padding: '10px 12px' }}>{d.urun}</td>
+                        <td style={{ fontSize: 13, color: '#6B7280', fontFamily: 'monospace', padding: '10px 12px' }}>{d.barkod}</td>
+                        <td style={{ fontSize: 13, color: '#1A1915', padding: '10px 12px' }}>{d.adet}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Teslimat table ──────────────────────────────────────────────────────────
+const COLS_TES = '36px 56px 1.5fr 1fr 70px 90px 110px 110px 50px 120px 120px';
+function TeslimatTable({ rows, selectedRows, toggleRow, allRows, setSelectedRows, router, toast }: {
+  rows: Row[]; selectedRows: string[]; toggleRow: (id: string) => void; allRows: string[]; setSelectedRows: (v: string[]) => void; router: ReturnType<typeof useRouter>; toast: (m: string) => void;
+}) {
+  void router; void toast;
+  const allSel = allRows.length > 0 && allRows.every(id => selectedRows.includes(id));
+  const head = ['', 'GÖRSEL', 'SİPARİŞ / ÜRÜNLER', 'MÜŞTERİ', 'PLATFORM', 'KARGO', 'SİSTEM DURUMU', 'YAZDIRMA', 'K/A', 'TAHMİNİ TESLİMAT', 'GERÇEK TESLİMAT'];
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EFEDE8', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: COLS_TES, padding: '10px 16px', borderBottom: '1px solid #F3F4F6', alignItems: 'center' }}>
+        <input type="checkbox" checked={allSel} onChange={() => setSelectedRows(allSel ? [] : allRows)} style={{ width: 16, height: 16, accentColor: '#1A6B46', cursor: 'pointer' }} />
+        {head.slice(1).map((h, i) => <div key={i} style={{ fontSize: 11, fontWeight: 600, color: '#9E9B93', textTransform: 'uppercase' }}>{h}</div>)}
+      </div>
+      {rows.map((r, idx) => {
+        const sel = selectedRows.includes(r.id);
+        const ext = TESLIMAT_EXTRA[r.id];
+        const bg = sel ? '#EBF5EF' : r.yazdirildi ? '#F0FDF4' : '#fff';
+        return (
+          <div key={r.id} onClick={() => toggleRow(r.id)} style={{ display: 'grid', gridTemplateColumns: COLS_TES, padding: '14px 16px', alignItems: 'center', cursor: 'pointer', background: bg, borderBottom: idx < rows.length - 1 ? '1px solid #F3F4F6' : 'none', borderLeft: sel ? '3px solid #1A6B46' : '3px solid transparent' }}>
+            <input type="checkbox" checked={sel} onChange={() => toggleRow(r.id)} onClick={e => e.stopPropagation()} style={{ width: 16, height: 16, accentColor: '#1A6B46', cursor: 'pointer' }} />
+            <ImgBox />
+            <div><div style={{ fontSize: 14, fontWeight: 700, color: '#1A1915' }}>{r.id}</div><div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{r.urun}</div></div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.musteri}</div>
+            <div><PlatformBadge p={r.platform} /></div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.kargo}</div>
+            <div><StatusPill s={r.durum} /></div>
+            <div style={{ fontSize: 12 }}>{r.yazdirildi ? <span style={{ color: '#16A34A' }}><Icon name="check" size={12} color="#16A34A" /> {r.yazdirildi}</span> : <span style={{ color: '#9E9B93' }}>Yazdırılmadı</span>}</div>
+            <div style={{ fontSize: 13, color: '#1A1915' }}>{r.ka}</div>
+            <div style={{ fontSize: 13, color: ext?.gecikme ? '#DC2626' : '#6B7280', fontWeight: ext?.gecikme ? 600 : 400 }}>{ext?.tahmini}</div>
+            <div style={{ fontSize: 13, color: ext?.gercek ? '#16A34A' : '#9E9B93', fontWeight: ext?.gercek ? 600 : 400 }}>{ext?.gercek || '—'}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Pagination ──────────────────────────────────────────────────────────────
+function Pagination({ perPage, setPerPage, total, fontFamily }: { perPage: number; setPerPage: (v: number) => void; total: number; fontFamily: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#fff', borderTop: '1px solid #F3F4F6', borderRadius: '0 0 14px 14px', marginTop: -1, border: '1px solid #EFEDE8', borderTopColor: '#F3F4F6' }}>
+      <div style={{ fontSize: 13, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 8 }}>
+        Sayfada
+        <select value={perPage} onChange={e => setPerPage(Number(e.target.value))} style={{ fontSize: 13, padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E7EB', fontFamily, background: '#fff', cursor: 'pointer' }}>
+          {[10, 25, 50, 100].map(n => <option key={n}>{n}</option>)}
+        </select>
+        kayıt göster
+      </div>
+      <div style={{ fontSize: 13, color: '#9E9B93' }}>{total} kayıttan 1–{Math.min(perPage, total)} arası gösteriliyor</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#6B7280' }}>← Önceki</button>
+        <button style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#1A1915', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily }}>1</button>
+        <button style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #E5E7EB', background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily, color: '#6B7280' }}>Sonraki →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Ürün listesi → adet grupları → sipariş kartları akışı ──────────────────────
+function ProductFlow({ view, setView, selectedUrun, setSelectedUrun, selectedGrup, setSelectedGrup, toast, card, fontFamily }: {
+  view: View; setView: (v: View) => void;
+  selectedUrun: (typeof URUN_LISTE)[0] | null; setSelectedUrun: (v: (typeof URUN_LISTE)[0] | null) => void;
+  selectedGrup: (typeof ADET_GRUPLARI)[0] | null; setSelectedGrup: (v: (typeof ADET_GRUPLARI)[0] | null) => void;
+  toast: (m: string) => void; card: React.CSSProperties; fontFamily: string;
+}) {
+  const backLink = (label: string, onClick: () => void) => (
+    <button onClick={onClick} style={{ background: 'none', border: 'none', color: '#6366F1', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily, marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: 4 }}>← {label}</button>
+  );
+  const btn = (bg: string): React.CSSProperties => ({ padding: '7px 14px', borderRadius: 8, border: 'none', background: bg, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily });
+
+  if (view === 'urun-listesi') {
+    return (
+      <>
+        {backLink('Sipariş Listesine Dön', () => setView('tablo'))}
+        <div style={{ ...card, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 60px 1fr 160px', padding: '10px 16px', borderBottom: '1px solid #F3F4F6' }}>
+            {['İŞLEM', 'GÖRSEL', 'ÜRÜN ADI', 'TOPLAM ADET'].map(h => <div key={h} style={{ fontSize: 11, fontWeight: 600, color: '#9E9B93', textTransform: 'uppercase' }}>{h}</div>)}
+          </div>
+          {URUN_LISTE.map((u, idx) => (
+            <div key={u.sku} style={{ display: 'grid', gridTemplateColumns: '130px 60px 1fr 160px', padding: '14px 16px', alignItems: 'center', borderBottom: idx < URUN_LISTE.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+              <button onClick={() => { setSelectedUrun(u); setView('adet-gruplari'); }} style={btn('#6366F1')}>Sepetleri Gör</button>
+              <ImgBox />
+              <div><div style={{ fontSize: 14, fontWeight: 700, color: '#1A1915' }}>{u.ad}</div><div style={{ fontSize: 12, color: '#9E9B93', marginTop: 2 }}>BARKOD: {u.barkod}</div></div>
+              <div><span style={{ background: '#D1FAE5', color: '#065F46', borderRadius: 999, fontSize: 16, fontWeight: 800, padding: '4px 16px' }}>{u.adet} Adet</span><div style={{ fontSize: 12, color: '#9E9B93', marginTop: 4 }}>{u.siparis} Siparişte</div></div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (view === 'adet-gruplari' && selectedUrun) {
+    return (
+      <>
+        {backLink('Ürün Listesine Dön', () => setView('urun-listesi'))}
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1915', marginBottom: 16 }}>BARKOD: {selectedUrun.sku}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {ADET_GRUPLARI.map(g => (
+            <div key={g.label} style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 14, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input type="checkbox" defaultChecked style={{ width: 16, height: 16, accentColor: '#3B82F6', cursor: 'pointer' }} />
+                <button onClick={() => { setSelectedGrup(g); setView('siparis-kartlari'); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily, color: '#065F46', fontWeight: 700, fontSize: 15 }}>{g.label}</button>
+                <span style={{ background: '#22C55E', color: '#fff', borderRadius: 999, fontSize: 13, fontWeight: 700, padding: '3px 12px', cursor: 'pointer' }} onClick={() => { setSelectedGrup(g); setView('siparis-kartlari'); }}>{g.adet} Adet</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => toast('Grup işleme alındı')} style={btn('#6366F1')}>Tümünü İşleme Al</button>
+                <button onClick={() => toast('Grup barkodları kuyruğa alındı')} style={btn('#22C55E')}>Tümünü Yazdır</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (view === 'siparis-kartlari' && selectedUrun && selectedGrup) {
+    return (
+      <>
+        {backLink('Sepet Gruplarına Dön', () => setView('adet-gruplari'))}
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1915', marginBottom: 16 }}>BARKOD: {selectedUrun.sku} — {selectedGrup.label}</div>
+        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 14, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <span style={{ color: '#065F46', fontWeight: 700, fontSize: 15 }}>{selectedGrup.label} <span style={{ background: '#22C55E', color: '#fff', borderRadius: 999, fontSize: 13, fontWeight: 700, padding: '3px 12px', marginLeft: 8 }}>{selectedGrup.adet} Adet</span></span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => toast('Grup işleme alındı')} style={btn('#6366F1')}>Tümünü İşleme Al</button>
+            <button onClick={() => toast('Grup barkodları kuyruğa alındı')} style={btn('#22C55E')}>Tümünü Yazdır</button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          {SIPARIS_KARTLARI.map(s => (
+            <div key={s.id} style={{ ...card, overflow: 'hidden' }}>
+              <div style={{ background: '#22C55E', color: '#fff', fontWeight: 700, fontSize: 13, textAlign: 'center', padding: '5px 0' }}>Adet: {s.adet}</div>
+              <div style={{ padding: 16 }}>
+                <div style={{ color: '#6366F1', fontWeight: 700, fontSize: 13, cursor: 'pointer', wordBreak: 'break-all' }}>{s.id}</div>
+                <div style={{ fontSize: 12, color: '#9E9B93', marginTop: 4 }}>{s.tarih}</div>
+                <div style={{ fontSize: 10, color: '#9E9B93', textTransform: 'uppercase', marginTop: 10 }}>Tutar</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1915' }}>{s.tutar}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+  return null;
+}
+
+// ─── Katalog tab ───────────────────────────────────────────────────────────────
+function KatalogTab({ katalog, setKatalog, toast, card, fontFamily }: {
+  katalog: KatalogRow[]; setKatalog: (v: KatalogRow[]) => void; toast: (m: string) => void; card: React.CSSProperties; fontFamily: string;
+}) {
+  const [search, setSearch] = useState('');
+  const filtered = katalog.filter(k => `${k.sku} ${k.orijinal} ${k.kisa}`.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <>
+      {/* info banner */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, background: '#FFFBEB', borderLeft: '4px solid #F59E0B', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#92400E', lineHeight: 1.5 }}>
+          Barkod etiketinde görünecek <b>Kısa Ürün Adlarını</b> buradan düzenleyin.<br />
+          Alan dışına çıkınca otomatik kaydedilir.
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Ürünlerde ara..." style={{ width: 200, fontSize: 13, padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily }} />
+          <button onClick={() => toast('124 ürün güncellendi')} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #F59E0B', background: '#fff', color: '#F59E0B', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" size={15} color="#F59E0B" /> Trendyol ile Eşitle</button>
+        </div>
+      </div>
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '60px 140px 1fr 280px', padding: '10px 16px', borderBottom: '1px solid #F3F4F6' }}>
+          {['GÖRSEL', 'BARKOD', 'ORİJİNAL ÜRÜN ADI', 'KISA AD (ETİKET İÇİN)'].map(h => <div key={h} style={{ fontSize: 11, fontWeight: 600, color: '#9E9B93', textTransform: 'uppercase' }}>{h}</div>)}
+        </div>
+        {filtered.map((k, idx) => (
+          <div key={k.sku} style={{ display: 'grid', gridTemplateColumns: '60px 140px 1fr 280px', padding: '14px 16px', alignItems: 'center', borderBottom: idx < filtered.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
+            <ImgBox />
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1915', fontFamily: 'monospace' }}>{k.sku}</div>
+            <div style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.4, paddingRight: 16 }}>{k.orijinal}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                defaultValue={k.kisa}
+                placeholder="Kısa ad gir..."
+                onBlur={e => { setKatalog(katalog.map(x => x.sku === k.sku ? { ...x, kisa: e.target.value } : x)); toast('Kaydedildi'); }}
+                style={{ width: 220, fontSize: 13, padding: '6px 10px', borderRadius: 8, border: '1px solid #E5E7EB', outline: 'none', fontFamily }} />
+              <button title="Düzenle" onClick={e => { (e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement)?.focus(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9E9B93', display: 'flex' }}><Icon name="edit" size={16} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ─── Manuel / Excel tab ──────────────────────────────────────────────────────
+function ManuelTab({ toast, card, fontFamily }: { toast: (m: string) => void; card: React.CSSProperties; fontFamily: string }) {
+  const [file, setFile] = useState<{ name: string; size: string } | null>(null);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      {/* Sol — Excel yükle */}
+      <div style={{ ...card, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A1915', marginBottom: 16 }}>Excel / CSV ile Sipariş Yükle</h3>
+        <label style={{ display: 'block', border: '2px dashed #D1D5DB', borderRadius: 16, padding: 40, textAlign: 'center', cursor: 'pointer', background: file ? '#F0FDF4' : '#FAFAF9' }}>
+          <input type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setFile({ name: f.name, size: (f.size / 1024 / 1024).toFixed(1) + ' MB' }); }} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}><Icon name="folder" size={36} color="#9CA3AF" /></div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1915', marginBottom: 4 }}>Dosyayı buraya sürükleyin</div>
+          <div style={{ fontSize: 13, color: '#9E9B93', marginBottom: 12 }}>veya</div>
+          <span style={{ display: 'inline-block', padding: '8px 18px', borderRadius: 8, border: '1.5px solid #1A1915', background: '#fff', fontSize: 13, fontWeight: 600, color: '#1A1915' }}>Dosya Seç</span>
+          <div style={{ fontSize: 12, color: '#9E9B93', marginTop: 12 }}>.xlsx, .csv desteklenir</div>
+        </label>
+        {file && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#16A34A', fontWeight: 600, marginBottom: 12 }}><Icon name="check" size={16} color="#16A34A" /> {file.name} · {file.size}</div>
+            <button onClick={() => { toast('47 sipariş içe aktarıldı'); setFile(null); }} style={{ width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: '#1A1915', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily }}>Yükle ve İçe Aktar</button>
+          </div>
+        )}
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button onClick={() => toast('Şablon indiriliyor...')} style={{ background: 'none', border: 'none', color: '#1A6B46', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily, textDecoration: 'underline' }}>Örnek Şablon İndir</button>
+        </div>
+      </div>
+
+      {/* Sağ — Son yüklemeler */}
+      <div style={{ ...card, padding: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A1915', marginBottom: 16 }}>Son Yüklemeler</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {RECENT_UPLOADS.map(u => (
+            <div key={u.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid #EFEDE8', borderRadius: 10 }}>
+              <Icon name="file" size={22} color="#6B7280" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1915' }}>{u.name}</div>
+                <div style={{ fontSize: 12, color: '#9E9B93', marginTop: 2 }}>{u.info}</div>
+              </div>
+              <button onClick={() => toast('Yükleme görüntüleniyor')} style={{ background: 'none', border: 'none', color: '#6366F1', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily }}>Görüntüle</button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
